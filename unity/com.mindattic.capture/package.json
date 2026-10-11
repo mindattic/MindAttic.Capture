@@ -1,0 +1,11 @@
+{
+  "name": "com.mindattic.capture",
+  "version": "1.0.0",
+  "displayName": "MindAttic Capture",
+  "description": "Record gameplay and take screenshots from code or the command line. Run a player with -capture video to film from start to exit at native resolution, or -capture screen 5 for a PNG every 5 seconds. Game events (CaptureUnity.Raise(\"critical-hit\")) trigger screenshots, clips and replays through capture.json rules. Output goes to R:\\MindAttic\\Capture\\<repo>\\<timestamp>.<ext>. Production builds ignore it (use MindAttic > Capture > Build Windows Player (Capture Enabled)). Windows editor and Windows players; needs ffmpeg on PATH.",
+  "unity": "6000.0",
+  "author": { "name": "MindAttic" },
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
+  }
+}

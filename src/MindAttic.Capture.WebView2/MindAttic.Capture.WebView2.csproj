@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <PackageId>MindAttic.Capture.WebView2</PackageId>
+    <!-- HOUSE-LAW-1: whole-number versions only; bump the major. -->
+    <Version>1.0.0</Version>
+    <Description>JavaScript bridge for MindAttic.Capture in WebView2: pages call window.mindattic.capture.raise/screenshot/clip/replay.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- The WebView2 package drags in its WPF/WinForms controls; this library only uses CoreWebView2. -->
+    <MSBuildWarningsAsMessages>MSB3277</MSBuildWarningsAsMessages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\js\mindattic-capture.js" LogicalName="mindattic-capture.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MindAttic.Capture\MindAttic.Capture.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3179.45" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MindAttic.Capture.Windows.Tests" />
+  </ItemGroup>
+
+</Project>

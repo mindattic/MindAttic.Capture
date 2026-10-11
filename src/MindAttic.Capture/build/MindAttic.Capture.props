@@ -1,0 +1,6 @@
+<Project>
+  <!-- Keeps Capture.Raise/Marker/Screenshot call sites compiled in. Set MindAtticCaptureStrip=true to remove them from a build. -->
+  <PropertyGroup Condition="'$(MindAtticCaptureStrip)' != 'true'">
+    <DefineConstants>$(DefineConstants);MINDATTIC_CAPTURE</DefineConstants>
+  </PropertyGroup>
+</Project>

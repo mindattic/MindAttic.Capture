@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <PackageId>MindAttic.Capture.Wpf</PackageId>
+    <!-- HOUSE-LAW-1: whole-number versions only; bump the major. -->
+    <Version>1.0.0</Version>
+    <Description>One-line MindAttic.Capture setup for WPF apps: -capture video / -capture screen N on the main window, export on exit.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MindAttic.Capture.Windows\MindAttic.Capture.Windows.csproj" />
+  </ItemGroup>
+
+</Project>

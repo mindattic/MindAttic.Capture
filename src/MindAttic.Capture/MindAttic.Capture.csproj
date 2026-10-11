@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- netstandard2.1 is the build Unity consumes; keep this project free of third-party dependencies. -->
+    <TargetFrameworks>netstandard2.1;net10.0</TargetFrameworks>
+    <PackageId>MindAttic.Capture</PackageId>
+    <!-- HOUSE-LAW-1: whole-number versions only; bump the major. -->
+    <Version>1.0.0</Version>
+    <Description>Programmatic video capture and screenshots for games and apps: event triggers, rolling replay, session recording, sidecar metadata. Host-agnostic core.</Description>
+    <PackageTags>capture;recording;screenshot;replay;ffmpeg;unity;wpf;webview2</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="build\MindAttic.Capture.props" Pack="true" PackagePath="buildTransitive\MindAttic.Capture.props" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MindAttic.Capture.Tests" />
+    <InternalsVisibleTo Include="MindAttic.Capture.Windows" />
+    <InternalsVisibleTo Include="capture" />
+    <InternalsVisibleTo Include="MindAttic.Capture.Windows.Tests" />
+  </ItemGroup>
+
+</Project>

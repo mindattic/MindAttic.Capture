@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <UseWPF>true</UseWPF>
+    <MSBuildWarningsAsMessages>MSB3277</MSBuildWarningsAsMessages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NUnit" Version="4.3.2" />
+    <PackageReference Include="NUnit3TestAdapter" Version="5.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MindAttic.Capture.Windows\MindAttic.Capture.Windows.csproj" />
+    <ProjectReference Include="..\..\src\MindAttic.Capture.Agent\MindAttic.Capture.Agent.csproj" />
+    <ProjectReference Include="..\..\src\MindAttic.Capture.WebView2\MindAttic.Capture.WebView2.csproj" />
+    <ProjectReference Include="..\..\src\MindAttic.Capture.Browser\MindAttic.Capture.Browser.csproj" />
+  </ItemGroup>
+
+</Project>

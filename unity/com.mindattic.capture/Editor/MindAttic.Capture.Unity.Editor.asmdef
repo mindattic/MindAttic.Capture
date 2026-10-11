@@ -1,0 +1,18 @@
+{
+    "name": "MindAttic.Capture.Unity.Editor",
+    "rootNamespace": "MindAttic.Capture.Unity.Editor",
+    "references": [
+        "MindAttic.Capture.Unity"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,12 @@
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.idea/
+*.snupkg
+*.nupkg
+TestResults/
+
+.claude/quicksave.md
+artifacts/

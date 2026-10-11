@@ -1,0 +1,1374 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>MindAttic.Capture</name>
+    </assembly>
+    <members>
+        <member name="T:MindAttic.Capture.CaptureEngine">
+            <summary>
+            The capture engine behind every host. Video always comes from one running tape (see
+            <see cref="T:MindAttic.Capture.Tape.CaptureTape"/>); recordings, clips, replays and the session are ranges cut from it.
+            </summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.#ctor(MindAttic.Capture.Hosting.ICaptureHost,MindAttic.Capture.CaptureOptions)">
+            <summary>Creates an engine; call <see cref="M:MindAttic.Capture.CaptureEngine.StartAsync(System.Threading.CancellationToken)"/> (or use <see cref="M:MindAttic.Capture.CaptureEngine.StartNewAsync(MindAttic.Capture.Hosting.ICaptureHost,MindAttic.Capture.CaptureOptions,System.Threading.CancellationToken)"/>).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.StartNewAsync(MindAttic.Capture.Hosting.ICaptureHost,MindAttic.Capture.CaptureOptions,System.Threading.CancellationToken)">
+            <summary>Creates, starts and registers an engine as <see cref="P:MindAttic.Capture.Capture.Current"/>.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureEngine.Enabled">
+            <inheritdoc/>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureEngine.SessionId">
+            <inheritdoc/>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureEngine.SessionFolder">
+            <inheritdoc/>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureEngine.IsRecording">
+            <inheritdoc/>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureEngine.Diagnostics">
+            <inheritdoc/>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureEngine.Triggers">
+            <inheritdoc/>
+        </member>
+        <member name="E:MindAttic.Capture.CaptureEngine.Captured">
+            <inheritdoc/>
+        </member>
+        <member name="E:MindAttic.Capture.CaptureEngine.DiskWarning">
+            <inheritdoc/>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureEngine.Options">
+            <summary>The options this engine runs with.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.StartAsync(System.Threading.CancellationToken)">
+            <summary>Validates options, loads rules, and starts the tape when session recording or the replay buffer is on.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.ScreenshotAsync(System.String,MindAttic.Capture.ScreenshotOptions)">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.IntervalScreenshotsAsync(System.TimeSpan)">
+            <summary>One screenshot per interval until shutdown; a slow grab skips ticks instead of queueing them.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.StartRecordingAsync(System.String,MindAttic.Capture.RecordingOptions)">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.PauseRecording">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.ResumeRecording">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.StopRecordingAsync">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.ClipAsync(System.TimeSpan,System.String,MindAttic.Capture.RecordingOptions)">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.SaveReplayAsync(System.TimeSpan,System.TimeSpan,System.String,MindAttic.Capture.RecordingOptions)">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.WindowAsync(MindAttic.Capture.CaptureKind,System.TimeSpan,System.TimeSpan,System.String,MindAttic.Capture.RecordingOptions,System.String,System.Nullable{System.Double},MindAttic.Capture.CaptureData)">
+            <summary>Footage from anchor - before to anchor + after (anchor = now unless an event supplied its tape time).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.Marker(System.String,MindAttic.Capture.CaptureData)">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.Raise(System.String,MindAttic.Capture.CaptureData)">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.ExecuteCommandAsync(System.String)">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.KeepFrom">
+            <summary>Retention floor: the replay window and every active lease.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.DisposeAsync">
+            <summary>
+            Stops capture: finishes the active recording and pending exports, then (in session mode)
+            hands the session export to the detached finalizer or runs it in-process.
+            </summary>
+        </member>
+        <member name="T:MindAttic.Capture.CaptureNaming">
+            <summary>Output naming: R:\MindAttic\Capture\{RepoName}\{timestamp}.{ext}.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureNaming.Timestamp(System.DateTimeOffset)">
+            <summary>
+            ISO 8601 local time with ':' replaced by '.' (Windows file names cannot contain ':'),
+            to the millisecond: 2026-10-11T14.29.20.123.
+            </summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureNaming.RepoName(System.String)">
+            <summary>
+            The name of the git repository containing <paramref name="path"/> (the nearest folder holding a .git
+            directory or file), or null when it is not inside one. Apps run from bin\Debug, Unity projects and
+            local site folders all resolve to their repo, so every repo gets its own capture folder.
+            </summary>
+        </member>
+        <member name="T:MindAttic.Capture.CaptureOptions">
+            <summary>Everything that configures a capture engine. Defaults suit MindAttic development machines.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.Enabled">
+            <summary>Global kill switch. When false every API call logs a warning and does nothing.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.OutputRoot">
+            <summary>Where captures go. A missing drive falls back to <see cref="P:MindAttic.Capture.CaptureOptions.FallbackRoot"/> with a warning.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.FallbackRoot">
+            <summary>Used when <see cref="P:MindAttic.Capture.CaptureOptions.OutputRoot"/>'s drive is unavailable.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.AppName">
+            <summary>Per-app folder under the root: the git repo the app runs from, else the entry assembly name.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.AppVersion">
+            <summary>Build version written to sidecars and the session manifest.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.FileTemplate">
+            <summary>File name template (default "{timestamp}", e.g. 2026-10-11T14.29.20.123). Tokens: {timestamp} {date} {time} {session} {tag} {index} {kind} {app}.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.FfmpegPath">
+            <summary>ffmpeg executable: full path, or a name found next to the app or on PATH.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.Fps">
+            <summary>Tape frame rate.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.TapeQuality">
+            <summary>How the tape is encoded.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.SessionRecording">
+            <summary>Record the whole run (the <c>-capture</c> flag) and export it when the app closes.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.SessionOutputs">
+            <summary>Outputs for the session export.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.ReplayArmed">
+            <summary>Keep a rolling tape so <see cref="M:MindAttic.Capture.ICapture.SaveReplayAsync(System.TimeSpan,System.TimeSpan,System.String,MindAttic.Capture.RecordingOptions)"/> can save the past.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.ReplayLength">
+            <summary>How much past footage the replay buffer keeps.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.ScreenshotInterval">
+            <summary>Take a screenshot this often for as long as the engine runs (<c>-capture screen 5</c>).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.Audio">
+            <summary>Audio recorded with the tape.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.DiskWarnGB">
+            <summary>Warn (log plus <see cref="E:MindAttic.Capture.ICapture.DiskWarning"/>) when the app's capture folder exceeds this size. Nothing is deleted.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.Rules">
+            <summary>Declarative trigger rules (also loadable from capture.json).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.Hotkeys">
+            <summary>Key name to command ("screenshot", "toggle-recording", "save-replay", "marker").</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.PostCapture">
+            <summary>Commands run after captures; only ever taken from developer config.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.DetachedFinalizerPath">
+            <summary>
+            Path to the capture agent. When set, the session export runs in a detached
+            <c>capture finalize</c> process so the app can exit immediately.
+            </summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.Log">
+            <summary>Logging sink.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.Json">
+            <summary>JSON implementation (required on netstandard2.1).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureOptions.Apply(MindAttic.Capture.CaptureArgs)">
+            <summary>Applies parsed command-line flags (and the environment).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureOptions.ApplyConfigFile(System.String)">
+            <summary>Loads capture.json-style settings from <paramref name="path"/>; missing keys keep their current values.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureOptions.Apply(MindAttic.Capture.CaptureConfigFile)">
+            <summary>Applies an already-parsed config file.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.CaptureConfigFile">
+            <summary>capture.json schema.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.Enabled">
+            <summary>Kill switch.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.OutputRoot">
+            <summary>Output root.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.FileTemplate">
+            <summary>File name template.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.AppName">
+            <summary>App folder name.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.Ffmpeg">
+            <summary>ffmpeg path.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.Fps">
+            <summary>Tape frame rate.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.Video">
+            <summary>Record the whole run as video (same as <c>-capture video</c>).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.ScreenshotEvery">
+            <summary>Screenshot interval, e.g. "5s" (same as <c>-capture screen 5</c>).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.TapeQuality">
+            <summary>Tape encoding.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.Audio">
+            <summary>Audio mode.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.DiskWarnGB">
+            <summary>Disk usage warning threshold.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.Replay">
+            <summary>Replay buffer settings.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.Rules">
+            <summary>Trigger rules.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.Hotkeys">
+            <summary>Hotkeys.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.PostCapture">
+            <summary>Post-capture commands.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.ReplayConfig">
+            <summary>Replay buffer settings in capture.json.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.ReplayConfig.Armed">
+            <summary>Keep the rolling buffer running.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.ReplayConfig.Seconds">
+            <summary>Buffer length in seconds.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.PostCaptureConfig">
+            <summary>A command run after matching captures. Tokens: {path} {tag} {kind} {session}.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.PostCaptureConfig.On">
+            <summary>Capture kind ("screenshot", "replay", ...), tag, or "*" for all.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.PostCaptureConfig.Run">
+            <summary>Command line run through cmd.exe.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.CaptureArgs">
+            <summary>
+            Parses the <c>-capture</c> flag and the MINDATTIC_CAPTURE environment variable:
+            <list type="bullet">
+            <item><c>-capture</c> or <c>-capture video</c>: record the app's window from start to exit at native resolution.</item>
+            <item><c>-capture screen 5</c>: a PNG every 5 seconds (any duration: 500ms, 10s, 1m) for as long as the app runs.</item>
+            <item><c>-capture video screen 5</c>: both. Add <c>hq</c> for a hardware-HEVC tape instead of lossless.</item>
+            <item><c>-capture-config capture.json</c>: load settings and trigger rules.</item>
+            </list>
+            MINDATTIC_CAPTURE takes the same words ("video screen 5"); "0" is a kill switch.
+            </summary>
+        </member>
+        <member name="F:MindAttic.Capture.CaptureArgs.DefaultScreenInterval">
+            <summary>Default screenshot interval when <c>screen</c> has no number.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureArgs.Video">
+            <summary>Record the whole run as video.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureArgs.ScreenInterval">
+            <summary>Take a screenshot this often for the whole run.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureArgs.ScreenIntervalSpecified">
+            <summary>
+            False for a bare <c>-capture screen</c> (interval defaulted): an app with its own idea of when to shoot
+            (a scripted tour, level checkpoints) may take over and clear <see cref="P:MindAttic.Capture.CaptureOptions.ScreenshotInterval"/>.
+            </summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureArgs.Quality">
+            <summary>Tape quality (<c>hq</c> or <c>lossless</c>).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureArgs.ConfigPath">
+            <summary><c>-capture-config path</c>.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureArgs.KillSwitch">
+            <summary>MINDATTIC_CAPTURE=0 disables capture entirely.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureArgs.Ignored">
+            <summary>Set when <c>-capture</c> was followed by a word that is not a capture mode (another meaning of the flag), which was ignored.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureArgs.Any">
+            <summary>True when any capture mode was requested.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureArgs.Parse(System.Collections.Generic.IEnumerable{System.String},System.String)">
+            <summary>Parses <paramref name="args"/> (and MINDATTIC_CAPTURE unless <paramref name="environment"/> is given).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureArgs.IsModeWord(System.String)">
+            <summary>True when <paramref name="word"/> is consumed by a preceding <c>-capture</c> (so app argument parsers can skip it).</summary>
+        </member>
+        <member name="T:MindAttic.Capture.CaptureKind">
+            <summary>What produced a <see cref="T:MindAttic.Capture.CaptureResult"/>.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.CaptureKind.Screenshot">
+            <summary>A still image.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.CaptureKind.Recording">
+            <summary>A Start/StopRecording span (pauses removed).</summary>
+        </member>
+        <member name="F:MindAttic.Capture.CaptureKind.Clip">
+            <summary>A fixed-length clip starting at the call.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.CaptureKind.Replay">
+            <summary>Footage from before (and optionally after) an event.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.CaptureKind.Session">
+            <summary>The whole <c>-capture</c> run.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.ImageFormat">
+            <summary>Still-image file format.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.ImageFormat.Png">
+            <summary>Lossless; keeps alpha when the host captured a transparent background.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.ImageFormat.Jpg">
+            <summary>Lossy (encoded through ffmpeg).</summary>
+        </member>
+        <member name="F:MindAttic.Capture.ImageFormat.WebP">
+            <summary>Lossy (encoded through ffmpeg).</summary>
+        </member>
+        <member name="F:MindAttic.Capture.ImageFormat.Bmp">
+            <summary>Uncompressed 32-bit.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.ImageFormat.RawBgra">
+            <summary>Tightly packed top-down BGRA bytes plus a <c>.json</c> sidecar with width, height and stride.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.CapturePreset">
+            <summary>Quality presets that pick output formats and encoder quality.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.CapturePreset.Session">
+            <summary>Whole-run session footage: lossless master plus an H.264 edit copy.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.CapturePreset.Lossless">
+            <summary>Lossless master only.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.CapturePreset.Trailer">
+            <summary>Lossless master plus a high-quality H.264 edit copy, for trailer editing.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.CapturePreset.Devlog">
+            <summary>Good-quality H.264 MP4, ready to post.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.CapturePreset.BugReport">
+            <summary>Small 720p30 H.264 MP4 for bug reports.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.TapeQuality">
+            <summary>How the rolling tape is encoded while recording.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.TapeQuality.Lossless">
+            <summary>FFV1 RGB: bit-exact, large (roughly 1-4 GB per minute at 1080p60).</summary>
+        </member>
+        <member name="F:MindAttic.Capture.TapeQuality.HighQuality">
+            <summary>Hardware HEVC at near-lossless quality: around 0.2 GB per minute.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.OutputFormats">
+            <summary>Video files to produce for a recording, clip, replay or session.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.OutputFormats.None">
+            <summary>Nothing beyond what the preset implies.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.OutputFormats.Mkv">
+            <summary>The tape-quality master (.mkv).</summary>
+        </member>
+        <member name="F:MindAttic.Capture.OutputFormats.Mp4">
+            <summary>H.264 MP4 that imports into any editor.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.OutputFormats.WebM">
+            <summary>VP9 WebM.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.OutputFormats.Gif">
+            <summary>Animated GIF (15 fps, 640 px wide).</summary>
+        </member>
+        <member name="F:MindAttic.Capture.OutputFormats.WebP">
+            <summary>Animated WebP (15 fps, 640 px wide).</summary>
+        </member>
+        <member name="T:MindAttic.Capture.AudioMode">
+            <summary>Which audio to record alongside video.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.AudioMode.None">
+            <summary>No audio.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.AudioMode.App">
+            <summary>App or game audio (system loopback where per-app capture is unavailable).</summary>
+        </member>
+        <member name="F:MindAttic.Capture.AudioMode.AppAndMic">
+            <summary>App audio plus the default microphone.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.CaptureData">
+            <summary>Key/value data attached to events, markers and captures; it lands in sidecar JSON.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureData.#ctor">
+            <summary>Creates an empty, case-insensitive bag.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureData.#ctor(System.Collections.Generic.IDictionary{System.String,System.Object})">
+            <summary>Copies <paramref name="source"/>.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.ScreenshotOptions">
+            <summary>Options for one screenshot. Options the host cannot honor are ignored with a warning.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.ScreenshotOptions.Supersample">
+            <summary>Render at N times the native resolution (hosts with <see cref="F:MindAttic.Capture.Hosting.HostCapabilities.Supersample"/>).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.ScreenshotOptions.TransparentBackground">
+            <summary>Clear the background to transparent (hosts with <see cref="F:MindAttic.Capture.Hosting.HostCapabilities.Transparency"/>; PNG only).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.ScreenshotOptions.ExcludeUi">
+            <summary>Hide UI layers (hosts with <see cref="F:MindAttic.Capture.Hosting.HostCapabilities.ExcludeUi"/>).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.ScreenshotOptions.Format">
+            <summary>File format.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.ScreenshotOptions.Quality">
+            <summary>JPG/WebP quality 1-100.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.ScreenshotOptions.Data">
+            <summary>Extra key/values written to the sidecar.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.RecordingOptions">
+            <summary>Options for a recording, clip or replay.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.RecordingOptions.Preset">
+            <summary>Picks the default outputs and encoder quality.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.RecordingOptions.Outputs">
+            <summary>Overrides the preset's output formats.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.RecordingOptions.OutputHeight">
+            <summary>Scale outputs (not the master) to this height, keeping aspect.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.RecordingOptions.Quality">
+            <summary>Encoder quality override (CRF/CQ scale; lower is better).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.RecordingOptions.SeparateAudioTracks">
+            <summary>Keep app and mic audio as separate tracks instead of mixing them.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.RecordingOptions.Data">
+            <summary>Extra key/values written to the sidecar.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.CaptureResult">
+            <summary>The outcome of a capture call. Calls never throw for runtime capture problems; check <see cref="P:MindAttic.Capture.CaptureResult.Error"/>.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureResult.Kind">
+            <summary>What kind of capture this was.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureResult.Tag">
+            <summary>The caller's tag.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureResult.Files">
+            <summary>Files produced, primary file first. Sidecars are not listed.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureResult.Timestamp">
+            <summary>When the capture was requested.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureResult.Duration">
+            <summary>Length of footage (zero for screenshots).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureResult.Trigger">
+            <summary>Event name when a trigger rule produced this capture.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureResult.Skipped">
+            <summary>Set when capture was disabled or not possible; no files were written.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureResult.Error">
+            <summary>Why the capture failed or was skipped.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureResult.PrimaryFile">
+            <summary>The first produced file, if any.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureResult.Succeeded">
+            <summary>True when at least one file was written.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.CaptureError">
+            <summary>Why a capture operation failed.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.CaptureError.InvalidArgument">
+            <summary>Bad argument or configuration.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.CaptureError.TargetNotFound">
+            <summary>The window, process or monitor to capture was not found.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.CaptureError.FfmpegFailed">
+            <summary>ffmpeg is missing or exited with an error.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.CaptureError.OutputUnavailable">
+            <summary>No output folder could be created.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.CaptureError.CaptureFailed">
+            <summary>The host failed to grab pixels.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.CaptureException">
+            <summary>Thrown by setup and host code; the <see cref="T:MindAttic.Capture.ICapture"/> API reports runtime failures through <see cref="P:MindAttic.Capture.CaptureResult.Error"/> instead.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureException.#ctor(MindAttic.Capture.CaptureError,System.String,System.Exception)">
+            <summary>Thrown by setup and host code; the <see cref="T:MindAttic.Capture.ICapture"/> API reports runtime failures through <see cref="P:MindAttic.Capture.CaptureResult.Error"/> instead.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureException.Error">
+            <summary>The failure category; doubles as the agent's exit code.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Ffmpeg.EncoderSet">
+            <summary>The encoders this machine can actually use (hardware first, software fallback).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.EncoderSet.#ctor(System.String,System.String)">
+            <summary>The encoders this machine can actually use (hardware first, software fallback).</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Ffmpeg.EncoderProbe">
+            <summary>Finds working hardware encoders by test-encoding a few frames with each candidate.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Ffmpeg.PresetSpec">
+            <summary>What a preset turns into.</summary>
+            <param name="Outputs">Files to produce.</param>
+            <param name="Quality">CRF/CQ for derived video (lower is better).</param>
+            <param name="MaxHeight">Scale derived outputs down to this height.</param>
+            <param name="Fps">Resample derived outputs to this rate.</param>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.PresetSpec.#ctor(MindAttic.Capture.OutputFormats,System.Int32,System.Nullable{System.Int32},System.Nullable{System.Int32})">
+            <summary>What a preset turns into.</summary>
+            <param name="Outputs">Files to produce.</param>
+            <param name="Quality">CRF/CQ for derived video (lower is better).</param>
+            <param name="MaxHeight">Scale derived outputs down to this height.</param>
+            <param name="Fps">Resample derived outputs to this rate.</param>
+        </member>
+        <member name="P:MindAttic.Capture.Ffmpeg.PresetSpec.Outputs">
+            <summary>Files to produce.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Ffmpeg.PresetSpec.Quality">
+            <summary>CRF/CQ for derived video (lower is better).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Ffmpeg.PresetSpec.MaxHeight">
+            <summary>Scale derived outputs down to this height.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Ffmpeg.PresetSpec.Fps">
+            <summary>Resample derived outputs to this rate.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Ffmpeg.TapeAudioTrack">
+            <summary>One raw PCM track file on the tape.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Ffmpeg.TapeAudioTrack.OffsetSeconds">
+            <summary>Tape time at which the first sample was captured.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Ffmpeg.FfmpegArgs">
+            <summary>Pure ffmpeg argument builders (no IO) so every command can be unit-tested.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegArgs.PushInput(System.Int32,System.Int32,System.Int32,System.Boolean)">
+            <summary>stdin raw BGRA input. Real-time frames use wall-clock timestamps; fixed-timestep frames use frame index.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegArgs.TapeCodec(MindAttic.Capture.TapeQuality,System.String,System.Int32)">
+            <summary>Tape codec. Lossless: FFV1 RGB, every frame a keyframe. HQ: hardware HEVC with a keyframe every segment.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegArgs.Tape(System.Collections.Generic.IEnumerable{System.String},MindAttic.Capture.TapeQuality,System.String,System.Int32,System.String)">
+            <summary>Full tape command: input, constant frame rate, codec, 1-second segments listed in tape.csv.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegArgs.VideoEncoder(System.String,System.Int32)">
+            <summary>Quality-targeted encoder arguments for any probed encoder.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegArgs.ConcatList(System.Collections.Generic.IReadOnlyList{System.ValueTuple{System.String,System.Nullable{System.Double},System.Nullable{System.Double}}})">
+            <summary>Concat-demuxer list: whole segments, trimmed with inpoint/outpoint at the range edges.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegArgs.Chapters(System.Collections.Generic.IReadOnlyList{System.ValueTuple{System.String,System.Double}},System.Double)">
+            <summary>FFMETADATA chapters: one per marker, running to the next marker (or the end).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegArgs.ExportRange(System.String,System.Double,System.Double,System.Collections.Generic.IReadOnlyList{System.ValueTuple{System.String,MindAttic.Capture.Ffmpeg.TapeAudioTrack}},System.Boolean,System.String,System.String)">
+            <summary>
+            Range export: video stream-copied from the concat list, each audio track cut to the same window
+            (delayed if it started after the range), mixed or kept separate, chapters attached.
+            </summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegArgs.JoinParts(System.String,System.String,System.String)">
+            <summary>Joins already-exported range files (pause/resume) without re-encoding.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegArgs.Mp4(System.String,System.String,MindAttic.Capture.Ffmpeg.PresetSpec,System.String)">
+            <summary>H.264 MP4 every editor imports (4:2:0, even dimensions, faststart).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegArgs.WebM(System.String,MindAttic.Capture.Ffmpeg.PresetSpec,System.String)">
+            <summary>VP9 WebM.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegArgs.Gif(System.String,System.String)">
+            <summary>Palette-optimized animated GIF, 15 fps, at most 640 px wide.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegArgs.AnimatedWebP(System.String,System.String)">
+            <summary>Animated WebP, 15 fps, at most 640 px wide.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegArgs.Thumbnail(System.String,System.Double,System.String)">
+            <summary>A JPEG thumbnail from the middle of a video, 480 px wide.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegArgs.StillFromRaw(System.Int32,System.Int32,MindAttic.Capture.ImageFormat,System.Int32,System.String)">
+            <summary>Encodes one raw BGRA frame from stdin to JPG or WebP.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegLocator.Find(System.String)">
+            <summary>Resolves ffmpeg: an absolute path, next to the app, or on PATH.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Ffmpeg.FfmpegProcess">
+            <summary>An ffmpeg child process: captured stderr, graceful stop, killed with the app via a job object.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Ffmpeg.FfmpegProcess.DataStdin">
+            <summary>Raw-frame stdin (data mode only).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegProcess.StartAsync(System.String,System.Collections.Generic.IReadOnlyList{System.String},System.Boolean,MindAttic.Capture.Hosting.ICaptureLog,System.Threading.CancellationToken)">
+            <summary>
+            Starts a long-running ffmpeg. In control mode it waits until ffmpeg reports it is processing
+            ("Press [q]"), so an input that cannot open fails here with ffmpeg's own message.
+            </summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegProcess.StopAsync(System.TimeSpan)">
+            <summary>
+            Ends the capture so the container is finalized: 'q' in control mode, closing stdin in data mode.
+            Kills ffmpeg only after <paramref name="timeout"/>.
+            </summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegProcess.RunAsync(System.String,System.Collections.Generic.IReadOnlyList{System.String},MindAttic.Capture.Hosting.ICaptureLog,System.Threading.CancellationToken,System.Byte[])">
+            <summary>Runs ffmpeg to completion, optionally feeding <paramref name="stdin"/>; non-zero exit throws with ffmpeg's error.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Ffmpeg.ChildProcessJob">
+            <summary>
+            A Windows job object that kills ffmpeg children when this process dies, so a crashed app
+            never leaves a recorder running. Finished segments stay on disk for recovery.
+            </summary>
+        </member>
+        <member name="T:MindAttic.Capture.Hosting.HostCapabilities">
+            <summary>What a host adapter can do beyond plain capture.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Hosting.HostCapabilities.None">
+            <summary>Plain capture only.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Hosting.HostCapabilities.Transparency">
+            <summary>Screenshots with a transparent background.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Hosting.HostCapabilities.ExcludeUi">
+            <summary>Screenshots without UI layers.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Hosting.HostCapabilities.Supersample">
+            <summary>Screenshots rendered above native resolution.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Hosting.HostCapabilities.FixedTimestep">
+            <summary>Frames are produced on a fixed timestep (frame-perfect, not real time).</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Hosting.HostCapabilities.AppAudio">
+            <summary>Audio of just this app (rather than the whole system mix).</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Hosting.ICaptureHost">
+            <summary>
+            The contract every host adapter (desktop, WPF, WebView2, Unity, ...) implements.
+            The core never references a host type; new hosts plug in here.
+            </summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.ICaptureHost.Name">
+            <summary>Short host name for logs and sidecars, e.g. "wpf" or "unity".</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.ICaptureHost.Capabilities">
+            <summary>What this host supports.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.ICaptureHost.CaptureStillAsync(MindAttic.Capture.ScreenshotOptions,System.Threading.CancellationToken)">
+            <summary>Grabs one frame. Called off the UI/game thread; the host marshals as needed.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.ICaptureHost.CreateVideoSource(System.Int32)">
+            <summary>Creates the video source the tape records from.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.ICaptureHost.CreateAudioTracks(MindAttic.Capture.AudioMode)">
+            <summary>Creates one capture per audio track (app, then mic). Empty when unsupported.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Hosting.CapturedImage">
+            <summary>A captured frame: top-down 8-bit BGRA, stride = Width * 4.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.CapturedImage.#ctor(System.Int32,System.Int32,System.Byte[],System.Boolean)">
+            <summary>A captured frame: top-down 8-bit BGRA, stride = Width * 4.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.CapturedImage.Width">
+            <summary>Width in pixels.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.CapturedImage.Height">
+            <summary>Height in pixels.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.CapturedImage.Bgra">
+            <summary>Pixel bytes.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.CapturedImage.HasAlpha">
+            <summary>True when the alpha channel is meaningful (transparent background).</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Hosting.VideoSource">
+            <summary>Where the tape's frames come from.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.VideoSource.Width">
+            <summary>Frame width the tape is created with.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.VideoSource.Height">
+            <summary>Frame height the tape is created with.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.VideoSource.Description">
+            <summary>Human-readable description for diagnostics, e.g. "ddagrab output 0".</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Hosting.NativeVideoSource">
+            <summary>ffmpeg grabs frames itself (e.g. ddagrab, gdigrab). Candidates are tried in order until one starts.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.NativeVideoSource.#ctor(System.Int32,System.Int32,System.Collections.Generic.IReadOnlyList{MindAttic.Capture.Hosting.NativeInput})">
+            <summary>ffmpeg grabs frames itself (e.g. ddagrab, gdigrab). Candidates are tried in order until one starts.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.NativeVideoSource.Width">
+            <inheritdoc/>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.NativeVideoSource.Height">
+            <inheritdoc/>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.NativeVideoSource.Candidates">
+            <summary>ffmpeg input argument sets, most preferred first.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.NativeVideoSource.Description">
+            <inheritdoc/>
+        </member>
+        <member name="T:MindAttic.Capture.Hosting.NativeInput">
+            <summary>One way to make ffmpeg grab frames.</summary>
+            <param name="Name">Diagnostic name, e.g. "ddagrab".</param>
+            <param name="Args">ffmpeg input arguments, ending with the <c>-i</c> argument pair.</param>
+            <param name="IsLavfiGraph">True when the input is a lavfi graph (affects nothing but diagnostics).</param>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.NativeInput.#ctor(System.String,System.Collections.Generic.IReadOnlyList{System.String},System.Boolean)">
+            <summary>One way to make ffmpeg grab frames.</summary>
+            <param name="Name">Diagnostic name, e.g. "ddagrab".</param>
+            <param name="Args">ffmpeg input arguments, ending with the <c>-i</c> argument pair.</param>
+            <param name="IsLavfiGraph">True when the input is a lavfi graph (affects nothing but diagnostics).</param>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.NativeInput.Name">
+            <summary>Diagnostic name, e.g. "ddagrab".</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.NativeInput.Args">
+            <summary>ffmpeg input arguments, ending with the <c>-i</c> argument pair.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.NativeInput.IsLavfiGraph">
+            <summary>True when the input is a lavfi graph (affects nothing but diagnostics).</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Hosting.PushVideoSource">
+            <summary>
+            The host pushes BGRA frames (WGC, Unity readback, ...). Real-time sources are timestamped by wall clock
+            and resampled to constant fps; fixed-timestep sources are timestamped by frame index (frame-perfect).
+            </summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.PushVideoSource.RealTime">
+            <summary>True: timestamps from the wall clock. False: frame N is at N / fps (fixed timestep).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.PushVideoSource.StartAsync(MindAttic.Capture.Hosting.IFrameSink,System.Threading.CancellationToken)">
+            <summary>Begin delivering frames to <paramref name="sink"/> until <see cref="M:MindAttic.Capture.Hosting.PushVideoSource.StopAsync"/>.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.PushVideoSource.StopAsync">
+            <summary>Stop delivering frames.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Hosting.IFrameSink">
+            <summary>Accepts frames for the tape.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.IFrameSink.WriteFrame(System.ReadOnlySpan{System.Byte})">
+            <summary>
+            Queues a copy of one Width x Height BGRA frame. Real-time sinks drop the frame (and return false)
+            when the encoder falls behind; fixed-timestep sinks block instead so no frame is lost.
+            </summary>
+        </member>
+        <member name="T:MindAttic.Capture.Hosting.AudioFormat">
+            <summary>Raw PCM layout of an audio track.</summary>
+            <param name="SampleRate">Samples per second.</param>
+            <param name="Channels">Interleaved channel count.</param>
+            <param name="FfmpegFormat">ffmpeg raw sample format, e.g. "f32le" or "s16le".</param>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.AudioFormat.#ctor(System.Int32,System.Int32,System.String)">
+            <summary>Raw PCM layout of an audio track.</summary>
+            <param name="SampleRate">Samples per second.</param>
+            <param name="Channels">Interleaved channel count.</param>
+            <param name="FfmpegFormat">ffmpeg raw sample format, e.g. "f32le" or "s16le".</param>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.AudioFormat.SampleRate">
+            <summary>Samples per second.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.AudioFormat.Channels">
+            <summary>Interleaved channel count.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.AudioFormat.FfmpegFormat">
+            <summary>ffmpeg raw sample format, e.g. "f32le" or "s16le".</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Hosting.IAudioTrackCapture">
+            <summary>One audio track (app or mic), written as raw PCM.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.IAudioTrackCapture.Name">
+            <summary>Track name for diagnostics ("app" or "mic").</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.IAudioTrackCapture.Format">
+            <summary>PCM layout written to the sink.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.IAudioTrackCapture.StartAsync(System.IO.Stream,System.Threading.CancellationToken)">
+            <summary>Start writing raw PCM to <paramref name="sink"/>. Silence must be written as zeros, not skipped.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.IAudioTrackCapture.StopAsync">
+            <summary>Stop and flush.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Hosting.ICaptureJson">
+            <summary>
+            JSON used for config files, sidecars, manifests and finalize state. On .NET it defaults to
+            System.Text.Json; netstandard2.1 hosts (Unity) must supply one (the Unity package uses Newtonsoft).
+            Serialize camelCase, enums as strings; deserialize case-insensitively.
+            </summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.ICaptureJson.Serialize``1(``0)">
+            <summary>Serializes <paramref name="value"/> as indented JSON.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.ICaptureJson.Deserialize``1(System.String)">
+            <summary>Parses <paramref name="json"/>.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Hosting.CaptureLogLevel">
+            <summary>Log severity.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Hosting.CaptureLogLevel.Debug">
+            <summary>Verbose detail (ffmpeg command lines, segment activity).</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Hosting.CaptureLogLevel.Info">
+            <summary>Normal activity.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Hosting.CaptureLogLevel.Warning">
+            <summary>Something was skipped or degraded.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Hosting.CaptureLogLevel.Error">
+            <summary>A capture failed.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Hosting.ICaptureLog">
+            <summary>Logging sink; hosts bridge it to ILogger, Unity's Debug.Log, etc.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.ICaptureLog.Log(MindAttic.Capture.Hosting.CaptureLogLevel,System.String,System.Exception)">
+            <summary>Writes one entry.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Hosting.TraceCaptureLog">
+            <summary>Writes to <see cref="T:System.Diagnostics.Trace"/>; the default when nothing else is configured.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Hosting.TraceCaptureLog.MinimumLevel">
+            <summary>Entries below this level are dropped.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.TraceCaptureLog.Log(MindAttic.Capture.Hosting.CaptureLogLevel,System.String,System.Exception)">
+            <inheritdoc/>
+        </member>
+        <member name="T:MindAttic.Capture.Hosting.TextWriterCaptureLog">
+            <summary>Writes to a <see cref="T:System.IO.TextWriter"/> (the agent uses Console.Error).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.TextWriterCaptureLog.#ctor(System.IO.TextWriter,MindAttic.Capture.Hosting.CaptureLogLevel)">
+            <summary>Writes to a <see cref="T:System.IO.TextWriter"/> (the agent uses Console.Error).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.TextWriterCaptureLog.Log(MindAttic.Capture.Hosting.CaptureLogLevel,System.String,System.Exception)">
+            <inheritdoc/>
+        </member>
+        <member name="T:MindAttic.Capture.ICapture">
+            <summary>
+            The one capture API every host exposes. Calls are thread-safe and never block the calling
+            (UI or game) thread; failures come back in <see cref="P:MindAttic.Capture.CaptureResult.Error"/> rather than as exceptions.
+            When capture is disabled every call logs a warning and returns a skipped result.
+            </summary>
+        </member>
+        <member name="P:MindAttic.Capture.ICapture.Enabled">
+            <summary>False when the kill switch is off; calls become no-ops.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.ICapture.SessionId">
+            <summary>Session id: the start timestamp (2026-10-11T14.29.20.123); names the session video and manifest.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.ICapture.SessionFolder">
+            <summary>The folder this app's captures go to, {root}\{RepoName} (created on first capture).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.ICapture.IsRecording">
+            <summary>True between StartRecording and StopRecording.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.ICapture.Diagnostics">
+            <summary>Encoder, frame and overhead statistics.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.ICapture.Triggers">
+            <summary>Code-defined trigger rules (capture.json rules are here too).</summary>
+        </member>
+        <member name="E:MindAttic.Capture.ICapture.Captured">
+            <summary>Raised after every capture (success or failure). Runs on a background thread.</summary>
+        </member>
+        <member name="E:MindAttic.Capture.ICapture.DiskWarning">
+            <summary>Raised once when the app's capture folder passes <see cref="P:MindAttic.Capture.CaptureOptions.DiskWarnGB"/>.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.ICapture.ScreenshotAsync(System.String,MindAttic.Capture.ScreenshotOptions)">
+            <summary>Takes a screenshot.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.ICapture.StartRecordingAsync(System.String,MindAttic.Capture.RecordingOptions)">
+            <summary>Starts recording. Footage is cut from the tape, so starting is instant.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.ICapture.StopRecordingAsync">
+            <summary>Stops recording and exports the footage (pauses removed).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.ICapture.PauseRecording">
+            <summary>Excludes footage from the current recording until <see cref="M:MindAttic.Capture.ICapture.ResumeRecording"/>.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.ICapture.ResumeRecording">
+            <summary>Resumes a paused recording.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.ICapture.ClipAsync(System.TimeSpan,System.String,MindAttic.Capture.RecordingOptions)">
+            <summary>Records <paramref name="duration"/> starting now; completes when the clip is written.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.ICapture.SaveReplayAsync(System.TimeSpan,System.TimeSpan,System.String,MindAttic.Capture.RecordingOptions)">
+            <summary>Saves footage from <paramref name="before"/> the call to <paramref name="after"/> it (needs the replay buffer armed for the past part).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.ICapture.Marker(System.String,MindAttic.Capture.CaptureData)">
+            <summary>Drops a timestamped marker; it appears in sidecars and as a chapter in exported video.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.ICapture.Raise(System.String,MindAttic.Capture.CaptureData)">
+            <summary>Raises a named event for the trigger rules. Returns immediately.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.ICapture.ExecuteCommandAsync(System.String)">
+            <summary>Runs a hotkey-style command: screenshot, toggle-recording, start-recording, stop-recording, save-replay, clip, marker.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.CaptureDiagnostics">
+            <summary>Live statistics, also written to the session manifest.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.Host">
+            <summary>Host adapter name.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.VideoSource">
+            <summary>How the tape grabs frames (e.g. ddagrab, wgc, unity-readback).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.TapeEncoder">
+            <summary>Tape encoder.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.Mp4Encoder">
+            <summary>H.264 encoder used for MP4s.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.TapeRunning">
+            <summary>True while the tape runs.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.FramesWritten">
+            <summary>Frames pushed into the tape (push sources).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.FramesDropped">
+            <summary>Frames dropped because the encoder fell behind (real-time push sources).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.AverageStillMs">
+            <summary>Average time to grab a still, in milliseconds.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.MaxStillMs">
+            <summary>Slowest still grab, in milliseconds.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.Screenshots">
+            <summary>Screenshots taken.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.Videos">
+            <summary>Videos exported.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.Failures">
+            <summary>Captures that failed.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.EventsRaised">
+            <summary>Events raised.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Capture">
+            <summary>
+            Static entry points for game/app code. Calls compile away unless MINDATTIC_CAPTURE is defined
+            (the package defines it by default; set MindAtticCaptureStrip=true to strip a build).
+            </summary>
+        </member>
+        <member name="P:MindAttic.Capture.Capture.Current">
+            <summary>The active capture engine (a no-op instance until a host initializes one).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Capture.Raise(System.String,MindAttic.Capture.CaptureData)">
+            <summary>Raises a named event (e.g. "critical-hit") for the trigger rules.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Capture.Marker(System.String,MindAttic.Capture.CaptureData)">
+            <summary>Drops a marker.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Capture.Screenshot(System.String,MindAttic.Capture.ScreenshotOptions)">
+            <summary>Takes a screenshot (fire and forget).</summary>
+        </member>
+        <member name="T:MindAttic.Capture.NullCapture">
+            <summary>Capture that does nothing; used when capture is disabled, stripped or not initialized.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.NullCapture.Instance">
+            <summary>Shared instance.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.NullCapture.Enabled">
+            <inheritdoc/>
+        </member>
+        <member name="P:MindAttic.Capture.NullCapture.SessionId">
+            <inheritdoc/>
+        </member>
+        <member name="P:MindAttic.Capture.NullCapture.SessionFolder">
+            <inheritdoc/>
+        </member>
+        <member name="P:MindAttic.Capture.NullCapture.IsRecording">
+            <inheritdoc/>
+        </member>
+        <member name="P:MindAttic.Capture.NullCapture.Diagnostics">
+            <inheritdoc/>
+        </member>
+        <member name="P:MindAttic.Capture.NullCapture.Triggers">
+            <inheritdoc/>
+        </member>
+        <member name="E:MindAttic.Capture.NullCapture.Captured">
+            <inheritdoc/>
+        </member>
+        <member name="E:MindAttic.Capture.NullCapture.DiskWarning">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.NullCapture.ScreenshotAsync(System.String,MindAttic.Capture.ScreenshotOptions)">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.NullCapture.StartRecordingAsync(System.String,MindAttic.Capture.RecordingOptions)">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.NullCapture.StopRecordingAsync">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.NullCapture.PauseRecording">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.NullCapture.ResumeRecording">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.NullCapture.ClipAsync(System.TimeSpan,System.String,MindAttic.Capture.RecordingOptions)">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.NullCapture.SaveReplayAsync(System.TimeSpan,System.TimeSpan,System.String,MindAttic.Capture.RecordingOptions)">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.NullCapture.Marker(System.String,MindAttic.Capture.CaptureData)">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.NullCapture.Raise(System.String,MindAttic.Capture.CaptureData)">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.NullCapture.ExecuteCommandAsync(System.String)">
+            <inheritdoc/>
+        </member>
+        <member name="M:MindAttic.Capture.NullCapture.DisposeAsync">
+            <inheritdoc/>
+        </member>
+        <member name="T:MindAttic.Capture.Imaging.ImageWriter">
+            <summary>Lossless still writers with no dependencies (works under Unity too). JPG/WebP go through ffmpeg.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Internal.Compat.CompletesWithin(System.Threading.Tasks.Task,System.TimeSpan)">
+            <summary>True when <paramref name="task"/> finished within <paramref name="timeout"/>.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Internal.Compat.QuoteWindowsArg(System.String)">
+            <summary>Quotes one argument for CommandLineToArgvW / MSVCRT parsing.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Internal.DurationText">
+            <summary>Parses "1500ms", "5s", "2.5s", "3m", "1h"; a bare number means seconds.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Output.ExportJob">
+            <summary>What to cut from a tape and what to produce.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Output.ExportJob.#ctor(System.String,MindAttic.Capture.Tape.TapeState,System.Collections.Generic.IReadOnlyList{MindAttic.Capture.Tape.TapeSegment},System.Collections.Generic.IReadOnlyList{System.ValueTuple{System.Double,System.Double}},System.String,MindAttic.Capture.Ffmpeg.PresetSpec,System.Collections.Generic.IReadOnlyList{MindAttic.Capture.Tape.MarkerRecord},System.Boolean)">
+            <summary>What to cut from a tape and what to produce.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Output.Exporter">
+            <summary>Cuts tape ranges into a master .mkv, derives MP4/WebM/GIF/WebP and a thumbnail.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Output.Exporter.#ctor(System.String,System.Func{System.Threading.Tasks.Task{MindAttic.Capture.Ffmpeg.EncoderSet}},MindAttic.Capture.Hosting.ICaptureLog)">
+            <summary>Cuts tape ranges into a master .mkv, derives MP4/WebM/GIF/WebP and a thumbnail.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Output.Exporter.CutAsync(MindAttic.Capture.Output.ExportJob,System.String,System.String,System.Threading.CancellationToken)">
+            <summary>Exports each range to a part (video copy + audio + chapters) and joins parts when there are several.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Output.CaptureSidecar">
+            <summary>Per-file sidecar (<c>file.ext.json</c>).</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Output.SessionManifest">
+            <summary>{session start}.session.json: everything that happened in one app run.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Output.OutputManager">
+            <summary>Resolves the output root, owns the session folder, names files and writes sidecars and the manifest.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Output.OutputManager.Root">
+            <summary>The configured root, or the fallback (with a warning) when its drive is missing.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Output.OutputManager.SessionDir">
+            <summary>{root}\{app}\ — every capture of this app lands here, named by timestamp; created on first use.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Output.OutputManager.SessionStem">
+            <summary>{app folder}\{session start}: the session video and its manifest ({stem}.session.json).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Output.OutputManager.StagingDir">
+            <summary>Tape segments live here: on the output volume so finalizing never copies across drives.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Output.OutputManager.NextStem(MindAttic.Capture.CaptureKind,System.String)">
+            <summary>Full path without extension for the next capture, from the file template.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Output.OutputManager.SanitizeTag(System.String)">
+            <summary>Tags become [A-Za-z0-9._-]; everything else turns into '-'.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Output.PostCaptureRunner">
+            <summary>
+            Runs developer-configured commands after captures. Commands only ever come from
+            <see cref="P:MindAttic.Capture.CaptureOptions.PostCapture"/> (config files the developer controls), never from events or the JS bridge.
+            </summary>
+        </member>
+        <member name="T:MindAttic.Capture.SessionFinalizer">
+            <summary>
+            Turns a stopped session tape into session.mkv/.mp4 in the session folder. Runs in-process, in a
+            detached <c>capture finalize</c> process, or from <c>capture recover</c> after a crash.
+            </summary>
+        </member>
+        <member name="M:MindAttic.Capture.SessionFinalizer.RunAsync(System.String,MindAttic.Capture.Hosting.ICaptureJson,MindAttic.Capture.Hosting.ICaptureLog,System.Threading.CancellationToken)">
+            <summary>Finalizes one tape directory. Returns the files written (empty when there was nothing to do).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.SessionFinalizer.RecoverAsync(System.String,MindAttic.Capture.Hosting.ICaptureJson,MindAttic.Capture.Hosting.ICaptureLog,System.Threading.CancellationToken)">
+            <summary>Finalizes every orphaned session tape under <paramref name="root"/> whose owning process is gone; discards orphaned scratch tapes.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.SessionFinalizer.DeleteTape(System.String)">
+            <summary>Deletes a tape folder, then its session staging folder and .staging when they become empty.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.SessionFinalizer.SpawnDetached(System.String,System.Collections.Generic.IReadOnlyList{System.String},MindAttic.Capture.Hosting.ICaptureLog)">
+            <summary>Starts the agent detached from this process (not in the kill-on-exit job), so it outlives the app.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Tape.CaptureTape">
+            <summary>
+            A continuously running recorder writing 1-second segments. Recordings, clips, replays and the
+            session are all time ranges cut from it, so they never start or stop an encoder themselves.
+            </summary>
+        </member>
+        <member name="P:MindAttic.Capture.Tape.CaptureTape.Now">
+            <summary>Current tape time in seconds.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Tape.CaptureTape.SetRetention(System.Func{System.Double})">
+            <summary>Retention: segments ending before keepFrom() are deleted (never while the session is being recorded).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Tape.CaptureTape.WaitForCoverageAsync(System.Double,System.TimeSpan,System.Threading.CancellationToken)">
+            <summary>Waits until finished segments cover tape time <paramref name="t"/> (or the tape stops).</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Tape.CaptureTape.FrameSink">
+            <summary>Copies pushed frames into a bounded queue drained by a writer thread into ffmpeg's stdin.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Tape.TapeSegment">
+            <summary>One finished tape segment; times are tape seconds.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Tape.TapeSegment.#ctor(System.String,System.Double,System.Double)">
+            <summary>One finished tape segment; times are tape seconds.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Tape.TapeState">
+            <summary>Persisted next to the segments (tape.json) so a separate process can finalize or recover the session.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Tape.TapeState.OwnerPid">
+            <summary>Owning process; recovery leaves tapes alone while it is still running.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Tape.FinalizeRequest">
+            <summary>Written at shutdown: what the finalizer must export.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Tape.MarkerRecord">
+            <summary>A marker on the tape timeline.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Tape.TapeSegments.Parse(System.String,System.String)">
+            <summary>Parses ffmpeg's csv segment list ("file,start,end" per finished segment); partial lines are ignored.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Tape.TapeSegments.Select(System.Collections.Generic.IReadOnlyList{MindAttic.Capture.Tape.TapeSegment},System.Double,System.Double)">
+            <summary>
+            Segments covering [a, b), with inpoint/outpoint relative to each segment. Segments already
+            deleted by retention are skipped. Returns the pieces and the actual covered start.
+            </summary>
+        </member>
+        <member name="T:MindAttic.Capture.Triggers.ITriggerRegistry">
+            <summary>Registers rules from code; capture.json rules land here too.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.ITriggerRegistry.On(System.String)">
+            <summary>Starts a rule for <paramref name="eventPattern"/>; pick an action on the builder.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.ITriggerRegistry.When(System.Func{System.Boolean},System.String,System.Nullable{System.TimeSpan})">
+            <summary>Polls <paramref name="condition"/> and raises <paramref name="eventName"/> each time it turns true.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.ITriggerRegistry.Rules">
+            <summary>All registered rules.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.ITriggerRegistry.SetEnabled(System.String,System.Boolean)">
+            <summary>Enables or disables every rule for an event pattern. Returns how many rules changed.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.ITriggerRegistry.Remove(MindAttic.Capture.Triggers.TriggerRule)">
+            <summary>Removes a rule.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Triggers.TriggerRuleBuilder">
+            <summary>Picks the action for a new rule.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerRuleBuilder.Screenshot(System.String,System.Nullable{MindAttic.Capture.ImageFormat})">
+            <summary>Screenshot when the event fires.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerRuleBuilder.Replay(System.TimeSpan,System.TimeSpan,System.String)">
+            <summary>Save <paramref name="before"/> + <paramref name="after"/> of footage around the event.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerRuleBuilder.Clip(System.TimeSpan,System.String)">
+            <summary>Record a clip of <paramref name="duration"/> starting at the event.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerRuleBuilder.Marker">
+            <summary>Drop a marker named after the event.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerRuleBuilder.StartRecording(System.String)">
+            <summary>Start recording.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerRuleBuilder.StopRecording">
+            <summary>Stop recording.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerRuleBuilder.ToggleRecording(System.String)">
+            <summary>Start or stop recording.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerRuleBuilder.Do(System.Func{MindAttic.Capture.ICapture,MindAttic.Capture.Triggers.CaptureEvent,System.Threading.Tasks.Task})">
+            <summary>Run <paramref name="callback"/>.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Triggers.TriggerEngine">
+            <summary>Matches events to rules and applies cooldown, debounce and per-session limits.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerEngine.Process(MindAttic.Capture.Triggers.CaptureEvent)">
+            <summary>Evaluates every rule against <paramref name="e"/>. Returns the number of rules that matched.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Triggers.TriggerAction">
+            <summary>What a trigger rule does when it fires.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Triggers.TriggerAction.Screenshot">
+            <summary>Take a screenshot.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Triggers.TriggerAction.Replay">
+            <summary>Save footage from <c>before</c> the event to <c>after</c> it.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Triggers.TriggerAction.Clip">
+            <summary>Record a fixed-length clip starting at the event.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Triggers.TriggerAction.Marker">
+            <summary>Drop a marker at the event.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Triggers.TriggerAction.StartRecording">
+            <summary>Start a recording.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Triggers.TriggerAction.StopRecording">
+            <summary>Stop the active recording.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Triggers.TriggerAction.ToggleRecording">
+            <summary>Start or stop recording.</summary>
+        </member>
+        <member name="F:MindAttic.Capture.Triggers.TriggerAction.Custom">
+            <summary>Run a code callback.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Triggers.CaptureEvent">
+            <summary>An event raised through <see cref="M:MindAttic.Capture.ICapture.Raise(System.String,MindAttic.Capture.CaptureData)"/>.</summary>
+            <param name="Name">Event name, e.g. "critical-hit".</param>
+            <param name="Data">Optional key/values; rule <c>where</c> filters test these.</param>
+            <param name="Timestamp">Wall-clock time of the raise.</param>
+            <param name="TapeSeconds">Position on the tape when raised (replays anchor here), or null when no tape ran.</param>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.CaptureEvent.#ctor(System.String,MindAttic.Capture.CaptureData,System.DateTimeOffset,System.Nullable{System.Double})">
+            <summary>An event raised through <see cref="M:MindAttic.Capture.ICapture.Raise(System.String,MindAttic.Capture.CaptureData)"/>.</summary>
+            <param name="Name">Event name, e.g. "critical-hit".</param>
+            <param name="Data">Optional key/values; rule <c>where</c> filters test these.</param>
+            <param name="Timestamp">Wall-clock time of the raise.</param>
+            <param name="TapeSeconds">Position on the tape when raised (replays anchor here), or null when no tape ran.</param>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.CaptureEvent.Name">
+            <summary>Event name, e.g. "critical-hit".</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.CaptureEvent.Data">
+            <summary>Optional key/values; rule <c>where</c> filters test these.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.CaptureEvent.Timestamp">
+            <summary>Wall-clock time of the raise.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.CaptureEvent.TapeSeconds">
+            <summary>Position on the tape when raised (replays anchor here), or null when no tape ran.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Triggers.TriggerRuleConfig">
+            <summary>A rule as written in capture.json.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRuleConfig.On">
+            <summary>Event name; "*" matches all and "battle-*" matches a prefix.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRuleConfig.Action">
+            <summary>screenshot | replay | clip | marker | start-recording | stop-recording | toggle-recording.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRuleConfig.Tag">
+            <summary>Output tag (defaults to the event name).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRuleConfig.Before">
+            <summary>Replay: footage before the event, e.g. "15s".</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRuleConfig.After">
+            <summary>Replay: footage after the event, e.g. "5s".</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRuleConfig.Duration">
+            <summary>Clip length, e.g. "10s".</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRuleConfig.Where">
+            <summary>Data filters: key to expression (">=500", "!=0", "boss", ...).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRuleConfig.Cooldown">
+            <summary>Ignore matches for this long after firing.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRuleConfig.Debounce">
+            <summary>Fire only once matches stop arriving for this long (with the last event's data).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRuleConfig.MaxPerSession">
+            <summary>Stop firing after this many times in a session.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRuleConfig.Enabled">
+            <summary>Per-rule enable switch.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRuleConfig.Preset">
+            <summary>Recording preset for replay/clip/recording actions.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRuleConfig.Format">
+            <summary>Image format for screenshot actions.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.Triggers.TriggerRule">
+            <summary>A live trigger rule. Fluent setters return the rule for chaining.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRule.EventPattern">
+            <summary>Event name pattern.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRule.Action">
+            <summary>What happens when the rule fires.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRule.Tag">
+            <summary>Output tag; null means use the event name.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRule.Before">
+            <summary>Replay footage before the event.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRule.After">
+            <summary>Replay footage after the event.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRule.Duration">
+            <summary>Clip length.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRule.CooldownTime">
+            <summary>Minimum time between firings.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRule.DebounceTime">
+            <summary>Quiet period before firing.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRule.MaxPerSession">
+            <summary>Firing limit per session.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRule.Enabled">
+            <summary>Per-rule switch; can be flipped at runtime.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRule.Preset">
+            <summary>Preset for video actions.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRule.Format">
+            <summary>Format for screenshot actions.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRule.Callback">
+            <summary>Callback for <see cref="F:MindAttic.Capture.Triggers.TriggerAction.Custom"/>.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Triggers.TriggerRule.Fired">
+            <summary>How many times this rule has fired this session.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerRule.Cooldown(System.TimeSpan)">
+            <summary>Sets <see cref="P:MindAttic.Capture.Triggers.TriggerRule.CooldownTime"/>.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerRule.Debounce(System.TimeSpan)">
+            <summary>Sets <see cref="P:MindAttic.Capture.Triggers.TriggerRule.DebounceTime"/>.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerRule.Max(System.Int32)">
+            <summary>Sets <see cref="P:MindAttic.Capture.Triggers.TriggerRule.MaxPerSession"/>.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerRule.Tagged(System.String)">
+            <summary>Sets <see cref="P:MindAttic.Capture.Triggers.TriggerRule.Tag"/>.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerRule.WithPreset(MindAttic.Capture.CapturePreset)">
+            <summary>Sets <see cref="P:MindAttic.Capture.Triggers.TriggerRule.Preset"/>.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerRule.Where(System.String,System.String)">
+            <summary>Adds a data filter, e.g. <c>Where("damage", "&gt;=500")</c>.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerRule.FromConfig(MindAttic.Capture.Triggers.TriggerRuleConfig)">
+            <summary>Builds and validates a rule from config.</summary>
+        </member>
+    </members>
+</doc>

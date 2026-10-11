@@ -1,0 +1,5 @@
+<linker>
+  <!-- Sidecars, manifests and capture.json are (de)serialized by reflection; keep the core intact under IL2CPP stripping. -->
+  <assembly fullname="MindAttic.Capture" preserve="all" />
+  <assembly fullname="MindAttic.Capture.Unity" preserve="all" />
+</linker>

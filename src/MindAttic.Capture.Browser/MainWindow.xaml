@@ -1,0 +1,52 @@
+<Window x:Class="MindAttic.Capture.Browser.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="MindAttic Browser" Width="1600" Height="900" MinWidth="480" MinHeight="320"
+        Background="{StaticResource Chrome}" WindowStartupLocation="CenterScreen">
+    <Window.InputBindings>
+        <KeyBinding Key="Left" Modifiers="Alt" Command="BrowseBack" />
+        <KeyBinding Key="Right" Modifiers="Alt" Command="BrowseForward" />
+        <KeyBinding Key="F5" Command="Refresh" />
+        <KeyBinding Key="L" Modifiers="Control" Command="Search" />
+        <KeyBinding Key="F12" Command="Properties" />
+        <KeyBinding Key="S" Modifiers="Control+Shift" Command="Print" />
+    </Window.InputBindings>
+    <Window.CommandBindings>
+        <CommandBinding Command="BrowseBack" Executed="OnBack" />
+        <CommandBinding Command="BrowseForward" Executed="OnForward" />
+        <CommandBinding Command="Refresh" Executed="OnReload" />
+        <CommandBinding Command="Search" Executed="OnFocusAddress" />
+        <CommandBinding Command="Properties" Executed="OnDevTools" />
+        <CommandBinding Command="Print" Executed="OnScreenshot" />
+    </Window.CommandBindings>
+    <DockPanel>
+        <Border DockPanel.Dock="Top" BorderBrush="{StaticResource ChromeBorder}" BorderThickness="0,0,0,1" Padding="6,5">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="BackButton" Style="{StaticResource ToolButton}" Content="&#xE72B;" ToolTip="Back (Alt+Left)" Click="OnBack" />
+                    <Button x:Name="ForwardButton" Style="{StaticResource ToolButton}" Content="&#xE72A;" ToolTip="Forward (Alt+Right)" Click="OnForward" />
+                    <Button Style="{StaticResource ToolButton}" Content="&#xE72C;" ToolTip="Reload (F5)" Click="OnReload" />
+                    <Button Style="{StaticResource ToolButton}" Content="&#xE80F;" ToolTip="Home" Click="OnHome" />
+                </StackPanel>
+                <TextBox x:Name="Address" Grid.Column="1" Margin="6,0" Padding="8,4" VerticalContentAlignment="Center" FontSize="13"
+                         Background="#FF2A2C33" Foreground="{StaticResource Text}" BorderBrush="{StaticResource ChromeBorder}" CaretBrush="{StaticResource Text}"
+                         KeyDown="OnAddressKeyDown" GotKeyboardFocus="OnAddressFocused" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="CaptureState" Margin="4,0,8,0" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource Muted}" />
+                    <Button Style="{StaticResource ToolButton}" Content="&#xE722;" ToolTip="Screenshot (Ctrl+Shift+S)" Click="OnScreenshot" />
+                    <Button Style="{StaticResource ToolButton}" Content="&#xE838;" ToolTip="Open capture folder" Click="OnOpenFolder" />
+                </StackPanel>
+            </Grid>
+        </Border>
+        <Border DockPanel.Dock="Bottom" Padding="8,2" BorderBrush="{StaticResource ChromeBorder}" BorderThickness="0,1,0,0">
+            <TextBlock x:Name="Status" FontSize="11" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis" />
+        </Border>
+        <wv2:WebView2 x:Name="Web" DefaultBackgroundColor="White" />
+    </DockPanel>
+</Window>
