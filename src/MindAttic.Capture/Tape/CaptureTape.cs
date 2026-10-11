@@ -146,8 +146,43 @@ internal sealed class CaptureTape : IAsyncDisposable
         return false;
     }
 
+    /// <summary>Furthest the encoder has fallen behind real time, in seconds.</summary>
+    public double MaxLagSeconds { get; private set; }
+
+    /// <summary>How far finished segments trail the tape clock right now.</summary>
+    private double CurrentLag()
+    {
+        var segs = Segments();
+        var encoded = segs.Count > 0 ? segs[segs.Count - 1].End : 0;
+        return Math.Max(0, Now - encoded - FfmpegArgs.SegmentSeconds);
+    }
+
+    private void CheckLag()
+    {
+        if (_push is { RealTime: false }) return; // fixed-timestep tapes slow the game down instead of lagging
+        var lag = CurrentLag();
+        if (lag > MaxLagSeconds) MaxLagSeconds = lag;
+        if (lag >= LagWarnSeconds && !_lagWarned)
+        {
+            _lagWarned = true;
+            _log.Warn($"The tape encoder is {lag:0}s behind real time: the output drive or CPU can't keep up with {State.Quality} " +
+                      $"{State.Width}x{State.Height}@{State.Fps}. Frames buffer inside ffmpeg until it catches up, and anything not " +
+                      "encoded when the app closes is lost. Use 'hq', a lower resolution, or a faster output drive.");
+        }
+    }
+
+    private const double LagWarnSeconds = 10;
+    private bool _lagWarned;
+
     private void Sweep()
     {
+        try
+        {
+            CheckLag();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
         if (State.SessionRecording || _keepFrom is null) return;
         double keep;
         try
@@ -197,9 +232,23 @@ internal sealed class CaptureTape : IAsyncDisposable
             await capture.DisposeAsync().ConfigureAwait(false);
         }
         if (_push is not null) await _push.StopAsync().ConfigureAwait(false);
-        if (_sink is not null) await _sink.CompleteAsync().ConfigureAwait(false);
-        var code = await _ffmpeg.StopAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+        var lag = 0.0;
+        try
+        {
+            lag = CurrentLag();
+        }
+        catch (IOException)
+        {
+        }
+        // An encoder far behind real time would take as long again to catch up; give it a bounded grace
+        // period, then cut. Segments already finished are kept and the session is exported from them.
+        var grace = TimeSpan.FromSeconds(30);
+        if (lag > grace.TotalSeconds)
+            _log.Warn($"The tape encoder is {lag:0}s behind; footage it hasn't encoded within {grace.TotalSeconds:0}s will be dropped.");
+        var drained = _sink is null || await _sink.CompleteAsync().CompletesWithin(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        var code = await _ffmpeg.StopAsync(drained ? grace : TimeSpan.Zero).ConfigureAwait(false);
         if (code != 0) _log.Warn($"Tape ffmpeg exited with code {code}.{Environment.NewLine}{_ffmpeg.StderrTail}");
+        if (_sink is not null && !drained) await _sink.CompleteAsync().CompletesWithin(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
         await _ffmpeg.DisposeAsync().ConfigureAwait(false);
         SaveState();
         _log.Info($"Tape stopped at {Now:0.0}s ({FramesWritten} pushed, {FramesDropped} dropped).");

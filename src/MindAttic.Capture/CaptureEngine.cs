@@ -679,6 +679,7 @@ public sealed class CaptureEngine : ICapture
             await tape.StopAsync().ConfigureAwait(false);
             Diagnostics.FramesWritten = tape.FramesWritten;
             Diagnostics.FramesDropped = tape.FramesDropped;
+            Diagnostics.MaxEncoderLagSeconds = tape.MaxLagSeconds;
             Diagnostics.TapeRunning = false;
             if (tape.State.SessionRecording)
             {

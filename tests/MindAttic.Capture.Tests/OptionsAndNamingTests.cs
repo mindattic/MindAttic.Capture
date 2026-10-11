@@ -200,6 +200,49 @@ public class OutputManagerTests
     }
 }
 
+public class FfmpegLocatorTests
+{
+    private string _root = "";
+
+    [SetUp]
+    public void SetUp() => Directory.CreateDirectory(_root = Path.Combine(Path.GetTempPath(), "mac-shim-" + Guid.NewGuid().ToString("N")));
+
+    [TearDown]
+    public void TearDown() => Directory.Delete(_root, recursive: true);
+
+    private string Touch(params string[] parts)
+    {
+        var path = Path.Combine([_root, .. parts]);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "");
+        return path;
+    }
+
+    [Test]
+    public void Chocolatey_shim_resolves_to_the_real_binary()
+    {
+        var shim = Touch("chocolatey", "bin", "ffmpeg.exe");
+        var real = Touch("chocolatey", "lib", "ffmpeg", "tools", "ffmpeg", "bin", "ffmpeg.exe");
+        Assert.That(FfmpegLocator.ResolveShim(shim), Is.EqualTo(real));
+    }
+
+    [Test]
+    public void Scoop_shim_resolves_through_its_shim_file()
+    {
+        var shim = Touch("scoop", "shims", "ffmpeg.exe");
+        var real = Touch("scoop", "apps", "ffmpeg", "current", "bin", "ffmpeg.exe");
+        File.WriteAllText(Path.Combine(_root, "scoop", "shims", "ffmpeg.shim"), $"path = \"{real}\"\n");
+        Assert.That(FfmpegLocator.ResolveShim(shim), Is.EqualTo(real));
+    }
+
+    [Test]
+    public void Plain_binary_is_returned_unchanged()
+    {
+        var exe = Touch("tools", "bin", "ffmpeg.exe");
+        Assert.That(FfmpegLocator.ResolveShim(exe), Is.EqualTo(exe));
+    }
+}
+
 public class FfmpegArgsTests
 {
     [Test]

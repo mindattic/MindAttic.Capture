@@ -16,17 +16,17 @@ internal static class FfmpegLocator
     public static string? TryFind(string configured)
     {
         if (string.IsNullOrWhiteSpace(configured)) configured = "ffmpeg";
-        if (Path.IsPathRooted(configured)) return File.Exists(configured) ? configured : null;
+        if (Path.IsPathRooted(configured)) return File.Exists(configured) ? ResolveShim(configured) : null;
         var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
         var name = isWindows && !configured.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? configured + ".exe" : configured;
         var local = Path.Combine(AppContext.BaseDirectory, name);
-        if (File.Exists(local)) return local;
+        if (File.Exists(local)) return ResolveShim(local);
         foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split([Path.PathSeparator], StringSplitOptions.RemoveEmptyEntries))
         {
             try
             {
                 var full = Path.Combine(dir.Trim('"'), name);
-                if (File.Exists(full)) return full;
+                if (File.Exists(full)) return ResolveShim(full);
             }
             catch (ArgumentException)
             {
@@ -34,6 +34,53 @@ internal static class FfmpegLocator
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// Maps a Chocolatey or Scoop shim to the real executable. A shim runs ffmpeg as its own child,
+    /// so stopping or killing the shim would leave the real encoder running and holding our pipes.
+    /// </summary>
+    internal static string ResolveShim(string path)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? "";
+            var name = Path.GetFileName(path);
+            var stem = Path.GetFileNameWithoutExtension(path);
+
+            // Scoop: shims\ffmpeg.exe next to shims\ffmpeg.shim containing: path = "C:\...\ffmpeg.exe"
+            var scoop = Path.Combine(dir, stem + ".shim");
+            if (File.Exists(scoop))
+            {
+                foreach (var line in File.ReadAllLines(scoop))
+                {
+                    var eq = line.IndexOf('=');
+                    if (eq < 0 || !line.Substring(0, eq).Trim().Equals("path", StringComparison.OrdinalIgnoreCase)) continue;
+                    var target = line.Substring(eq + 1).Trim().Trim('"');
+                    if (File.Exists(target)) return target;
+                }
+            }
+
+            // Chocolatey: <choco>\bin\ffmpeg.exe is a shim for <choco>\lib\<package>\tools\...\ffmpeg.exe
+            if (Path.GetFileName(dir).Equals("bin", StringComparison.OrdinalIgnoreCase)
+                && Directory.Exists(Path.Combine(Path.GetDirectoryName(dir) ?? "", "lib"))
+                && Path.GetFileName(Path.GetDirectoryName(dir) ?? "").IndexOf("chocolatey", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                var lib = Path.Combine(Path.GetDirectoryName(dir)!, "lib");
+                foreach (var package in Directory.EnumerateDirectories(lib, stem + "*").OrderBy(p => p.Length))
+                {
+                    var tools = Path.Combine(package, "tools");
+                    if (!Directory.Exists(tools)) continue;
+                    var real = Directory.EnumerateFiles(tools, name, SearchOption.AllDirectories).OrderBy(p => p.Length).FirstOrDefault();
+                    if (real is not null) return real;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // Not resolvable; use the shim.
+        }
+        return path;
     }
 }
 
@@ -135,45 +182,77 @@ internal sealed class FfmpegProcess : IAsyncDisposable
 
     /// <summary>
     /// Ends the capture so the container is finalized: 'q' in control mode, closing stdin in data mode.
-    /// Kills ffmpeg only after <paramref name="timeout"/>.
+    /// Kills ffmpeg (and anything it started) after <paramref name="timeout"/>; a zero timeout kills at once.
+    /// Never waits longer than the timeout plus a few seconds.
     /// </summary>
     public async Task<int> StopAsync(TimeSpan timeout)
     {
-        if (!_process.HasExited)
+        if (!_process.HasExited && timeout > TimeSpan.Zero)
         {
-            try
+            var signal = Task.Run(async () =>
             {
-                if (_dataStdin)
+                try
                 {
-                    _process.StandardInput.BaseStream.Flush();
-                    _process.StandardInput.Close();
+                    if (_dataStdin)
+                    {
+                        _process.StandardInput.BaseStream.Flush();
+                        _process.StandardInput.Close();
+                    }
+                    else
+                    {
+                        await _process.StandardInput.WriteAsync('q').ConfigureAwait(false);
+                        await _process.StandardInput.FlushAsync().ConfigureAwait(false);
+                    }
                 }
-                else
+                catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
                 {
-                    await _process.StandardInput.WriteAsync('q').ConfigureAwait(false);
-                    await _process.StandardInput.FlushAsync().ConfigureAwait(false);
+                    // Pipe already closed: ffmpeg is exiting on its own.
                 }
-            }
-            catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
-            {
-                // Pipe already closed: ffmpeg is exiting on its own.
-            }
-            if (!await _process.WaitForExitCompatAsync().CompletesWithin(timeout).ConfigureAwait(false)) Kill();
+            });
+            // Closing a full pipe blocks until ffmpeg reads; the exit wait below bounds that too.
+            await signal.CompletesWithin(timeout).ConfigureAwait(false);
+            await _process.WaitForProcessExitAsync(timeout).ConfigureAwait(false);
         }
-        await _process.WaitForExitCompatAsync().ConfigureAwait(false);
+        if (!_process.HasExited) Kill();
+        // After a kill, wait for the process itself, not for EOF on its output pipes: a grandchild can hold those open.
+        if (!await _process.WaitForProcessExitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false)) return -1;
         return _process.ExitCode;
     }
 
+    /// <summary>Kills ffmpeg and its whole process tree.</summary>
     private void Kill()
     {
         try
         {
+            if (_process.HasExited) return;
+#if NET
+            _process.Kill(entireProcessTree: true);
+#else
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) KillTreeWithTaskkill(_process.Id);
             if (!_process.HasExited) _process.Kill();
+#endif
         }
-        catch (InvalidOperationException)
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
         {
         }
     }
+
+#if !NET
+    private static void KillTreeWithTaskkill(int pid)
+    {
+        try
+        {
+            using var taskkill = Process.Start(new ProcessStartInfo("taskkill", $"/PID {pid} /T /F")
+            {
+                UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
+            });
+            taskkill?.WaitForExit(5000);
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+        }
+    }
+#endif
 
     /// <summary>Runs ffmpeg to completion, optionally feeding <paramref name="stdin"/>; non-zero exit throws with ffmpeg's error.</summary>
     public static async Task RunAsync(string exe, IReadOnlyList<string> args, ICaptureLog log, CancellationToken ct, byte[]? stdin = null)

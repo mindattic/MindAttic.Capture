@@ -34,6 +34,22 @@ namespace MindAttic.Capture.Internal
 #endif
         }
 
+        /// <summary>
+        /// True once the process itself has exited, within <paramref name="timeout"/>. Unlike WaitForExit(),
+        /// it doesn't wait for EOF on redirected output, which a surviving child process can hold open.
+        /// </summary>
+        public static Task<bool> WaitForProcessExitAsync(this Process process, TimeSpan timeout)
+        {
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            process.EnableRaisingEvents = true;
+            process.Exited += (_, _) => tcs.TrySetResult(true);
+            if (process.HasExited) tcs.TrySetResult(true);
+            return WaitAsync(tcs.Task, timeout);
+
+            static async Task<bool> WaitAsync(Task<bool> exited, TimeSpan timeout) =>
+                await exited.CompletesWithin(timeout).ConfigureAwait(false) || exited.IsCompleted;
+        }
+
         public static void AddArguments(this ProcessStartInfo psi, IEnumerable<string> args)
         {
 #if NET

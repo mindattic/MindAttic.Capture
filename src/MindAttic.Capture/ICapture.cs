@@ -83,6 +83,8 @@ public sealed class CaptureDiagnostics
     public long FramesWritten { get; internal set; }
     /// <summary>Frames dropped because the encoder fell behind (real-time push sources).</summary>
     public long FramesDropped { get; internal set; }
+    /// <summary>Furthest the tape encoder fell behind real time, in seconds (0 when it kept up).</summary>
+    public double MaxEncoderLagSeconds { get; internal set; }
     /// <summary>Average time to grab a still, in milliseconds.</summary>
     public double AverageStillMs { get; internal set; }
     /// <summary>Slowest still grab, in milliseconds.</summary>
@@ -100,6 +102,7 @@ public sealed class CaptureDiagnostics
     {
         ["host"] = Host, ["videoSource"] = VideoSource, ["tapeEncoder"] = TapeEncoder, ["mp4Encoder"] = Mp4Encoder,
         ["framesWritten"] = FramesWritten, ["framesDropped"] = FramesDropped,
+        ["maxEncoderLagSeconds"] = Math.Round(MaxEncoderLagSeconds, 1),
         ["averageStillMs"] = Math.Round(AverageStillMs, 2), ["maxStillMs"] = Math.Round(MaxStillMs, 2),
         ["screenshots"] = Screenshots, ["videos"] = Videos, ["failures"] = Failures, ["eventsRaised"] = EventsRaised,
     };

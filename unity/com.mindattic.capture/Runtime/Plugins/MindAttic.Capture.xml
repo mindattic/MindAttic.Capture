@@ -601,6 +601,12 @@
         <member name="M:MindAttic.Capture.Ffmpeg.FfmpegLocator.Find(System.String)">
             <summary>Resolves ffmpeg: an absolute path, next to the app, or on PATH.</summary>
         </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegLocator.ResolveShim(System.String)">
+            <summary>
+            Maps a Chocolatey or Scoop shim to the real executable. A shim runs ffmpeg as its own child,
+            so stopping or killing the shim would leave the real encoder running and holding our pipes.
+            </summary>
+        </member>
         <member name="T:MindAttic.Capture.Ffmpeg.FfmpegProcess">
             <summary>An ffmpeg child process: captured stderr, graceful stop, killed with the app via a job object.</summary>
         </member>
@@ -616,8 +622,12 @@
         <member name="M:MindAttic.Capture.Ffmpeg.FfmpegProcess.StopAsync(System.TimeSpan)">
             <summary>
             Ends the capture so the container is finalized: 'q' in control mode, closing stdin in data mode.
-            Kills ffmpeg only after <paramref name="timeout"/>.
+            Kills ffmpeg (and anything it started) after <paramref name="timeout"/>; a zero timeout kills at once.
+            Never waits longer than the timeout plus a few seconds.
             </summary>
+        </member>
+        <member name="M:MindAttic.Capture.Ffmpeg.FfmpegProcess.Kill">
+            <summary>Kills ffmpeg and its whole process tree.</summary>
         </member>
         <member name="M:MindAttic.Capture.Ffmpeg.FfmpegProcess.RunAsync(System.String,System.Collections.Generic.IReadOnlyList{System.String},MindAttic.Capture.Hosting.ICaptureLog,System.Threading.CancellationToken,System.Byte[])">
             <summary>Runs ffmpeg to completion, optionally feeding <paramref name="stdin"/>; non-zero exit throws with ffmpeg's error.</summary>
@@ -936,6 +946,9 @@
         <member name="P:MindAttic.Capture.CaptureDiagnostics.FramesDropped">
             <summary>Frames dropped because the encoder fell behind (real-time push sources).</summary>
         </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.MaxEncoderLagSeconds">
+            <summary>Furthest the tape encoder fell behind real time, in seconds (0 when it kept up).</summary>
+        </member>
         <member name="P:MindAttic.Capture.CaptureDiagnostics.AverageStillMs">
             <summary>Average time to grab a still, in milliseconds.</summary>
         </member>
@@ -1041,6 +1054,12 @@
         <member name="M:MindAttic.Capture.Internal.Compat.CompletesWithin(System.Threading.Tasks.Task,System.TimeSpan)">
             <summary>True when <paramref name="task"/> finished within <paramref name="timeout"/>.</summary>
         </member>
+        <member name="M:MindAttic.Capture.Internal.Compat.WaitForProcessExitAsync(System.Diagnostics.Process,System.TimeSpan)">
+            <summary>
+            True once the process itself has exited, within <paramref name="timeout"/>. Unlike WaitForExit(),
+            it doesn't wait for EOF on redirected output, which a surviving child process can hold open.
+            </summary>
+        </member>
         <member name="M:MindAttic.Capture.Internal.Compat.QuoteWindowsArg(System.String)">
             <summary>Quotes one argument for CommandLineToArgvW / MSVCRT parsing.</summary>
         </member>
@@ -1127,6 +1146,12 @@
         </member>
         <member name="M:MindAttic.Capture.Tape.CaptureTape.WaitForCoverageAsync(System.Double,System.TimeSpan,System.Threading.CancellationToken)">
             <summary>Waits until finished segments cover tape time <paramref name="t"/> (or the tape stops).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Tape.CaptureTape.MaxLagSeconds">
+            <summary>Furthest the encoder has fallen behind real time, in seconds.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Tape.CaptureTape.CurrentLag">
+            <summary>How far finished segments trail the tape clock right now.</summary>
         </member>
         <member name="T:MindAttic.Capture.Tape.CaptureTape.FrameSink">
             <summary>Copies pushed frames into a bounded queue drained by a writer thread into ffmpeg's stdin.</summary>
