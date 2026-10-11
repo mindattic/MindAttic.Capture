@@ -149,8 +149,14 @@ internal sealed class CaptureTape : IAsyncDisposable
     /// <summary>Furthest the encoder has fallen behind real time, in seconds.</summary>
     public double MaxLagSeconds { get; private set; }
 
+    /// <summary>The encoder process (for resource polling).</summary>
+    public Process EncoderProcess => _ffmpeg.Process;
+
+    /// <summary>True for fixed-timestep tapes, which slow the game down instead of lagging.</summary>
+    public bool FixedTimestep => _push is { RealTime: false };
+
     /// <summary>How far finished segments trail the tape clock right now.</summary>
-    private double CurrentLag()
+    public double CurrentLag()
     {
         var segs = Segments();
         var encoded = segs.Count > 0 ? segs[segs.Count - 1].End : 0;

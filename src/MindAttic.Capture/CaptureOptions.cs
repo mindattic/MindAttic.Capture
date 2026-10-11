@@ -60,6 +60,12 @@ public sealed class CaptureOptions
     /// <summary>Warn (log plus <see cref="ICapture.DiskWarning"/>) when the app's capture folder exceeds this size. Nothing is deleted.</summary>
     public double? DiskWarnGB { get; set; }
 
+    /// <summary>
+    /// The shut-off valve: resource limits polled while capture runs. Crossing one stops capture and exports
+    /// what was recorded, so a long run can't fill the disk or exhaust memory. The app keeps running.
+    /// </summary>
+    public CaptureLimits Limits { get; set; } = new();
+
     /// <summary>Declarative trigger rules (also loadable from capture.json).</summary>
     public List<TriggerRuleConfig> Rules { get; set; } = [];
 
@@ -88,6 +94,7 @@ public sealed class CaptureOptions
         if (args.Video) SessionRecording = true;
         if (args.ScreenInterval is { } interval) ScreenshotInterval = interval;
         if (args.Quality is { } q) TapeQuality = q;
+        if (args.MaxDuration is { } max) Limits.MaxDuration = max;
         if (args.ConfigPath is { } path) ApplyConfigFile(path);
         return this;
     }
@@ -130,6 +137,7 @@ public sealed class CaptureOptions
             if (replay.Armed is { } armed) ReplayArmed = armed;
             if (replay.Seconds is { } s) ReplayLength = TimeSpan.FromSeconds(s);
         }
+        if (file.Limits is { } limits) Limits.Apply(limits);
         if (file.Rules is { } rules) Rules.AddRange(rules);
         if (file.Hotkeys is { } keys) foreach (var kv in keys) Hotkeys[kv.Key] = kv.Value;
         if (file.PostCapture is { } post) PostCapture.AddRange(post);
@@ -146,7 +154,68 @@ public sealed class CaptureOptions
         if (string.IsNullOrWhiteSpace(OutputRoot)) throw new CaptureException(CaptureError.InvalidArgument, "OutputRoot is empty.");
         if (Json is null) throw new CaptureException(CaptureError.InvalidArgument, "CaptureOptions.Json must be set on this platform (netstandard2.1).");
         foreach (var r in Rules) TriggerRule.FromConfig(r);
+        Limits.Validate();
     }
+}
+
+/// <summary>
+/// Resource limits for the shut-off valve. Each is checked every <see cref="PollInterval"/>; the first one
+/// crossed stops capture (recorded footage is exported, nothing is deleted). Null turns a limit off.
+/// </summary>
+public sealed class CaptureLimits
+{
+    /// <summary>Master switch for the valve (stats are still logged when off).</summary>
+    public bool Enabled { get; set; } = true;
+    /// <summary>How often resources are polled.</summary>
+    public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(5);
+    /// <summary>Stop when the output (or staging) volume has less free space than this.</summary>
+    public double? MinFreeDiskGB { get; set; } = 50;
+    /// <summary>Stop when the machine has less available physical memory than this.</summary>
+    public double? MinFreeMemoryMB { get; set; } = 2048;
+    /// <summary>Stop when the tape encoder's private memory passes this; it grows when frames back up inside ffmpeg.</summary>
+    public double? MaxEncoderMemoryMB { get; set; } = 4096;
+    /// <summary>Stop when the tape encoder falls this far behind real time.</summary>
+    public double? MaxEncoderLagSeconds { get; set; } = 60;
+    /// <summary>Stop after capturing this long (<c>-capture video 8h</c>). Off by default.</summary>
+    public TimeSpan? MaxDuration { get; set; }
+
+    internal void Apply(LimitsConfig c)
+    {
+        if (c.Enabled is { } e) Enabled = e;
+        if (!string.IsNullOrWhiteSpace(c.PollEvery)) PollInterval = DurationText.Parse(c.PollEvery!);
+        if (c.MinFreeDiskGB is { } disk) MinFreeDiskGB = disk <= 0 ? null : disk;
+        if (c.MinFreeMemoryMB is { } mem) MinFreeMemoryMB = mem <= 0 ? null : mem;
+        if (c.MaxEncoderMemoryMB is { } enc) MaxEncoderMemoryMB = enc <= 0 ? null : enc;
+        if (c.MaxEncoderLagSeconds is { } lag) MaxEncoderLagSeconds = lag <= 0 ? null : lag;
+        if (!string.IsNullOrWhiteSpace(c.MaxDuration)) MaxDuration = DurationText.Parse(c.MaxDuration!);
+    }
+
+    internal void Validate()
+    {
+        if (PollInterval < TimeSpan.FromMilliseconds(250) || PollInterval > TimeSpan.FromMinutes(5))
+            throw new CaptureException(CaptureError.InvalidArgument, $"Limits.PollInterval {PollInterval} is out of range (250ms-5m).");
+        if (MaxDuration is { } d && d <= TimeSpan.Zero)
+            throw new CaptureException(CaptureError.InvalidArgument, $"Limits.MaxDuration {d} must be positive.");
+    }
+}
+
+/// <summary>"limits" in capture.json. Durations are text ("5s", "8h"); 0 turns a numeric limit off.</summary>
+public sealed class LimitsConfig
+{
+    /// <summary>Valve on/off.</summary>
+    public bool? Enabled { get; set; }
+    /// <summary>Poll interval, e.g. "5s".</summary>
+    public string? PollEvery { get; set; }
+    /// <summary>Minimum free disk, GB.</summary>
+    public double? MinFreeDiskGB { get; set; }
+    /// <summary>Minimum available memory, MB.</summary>
+    public double? MinFreeMemoryMB { get; set; }
+    /// <summary>Maximum encoder memory, MB.</summary>
+    public double? MaxEncoderMemoryMB { get; set; }
+    /// <summary>Maximum encoder lag, seconds.</summary>
+    public double? MaxEncoderLagSeconds { get; set; }
+    /// <summary>Maximum capture length, e.g. "8h".</summary>
+    public string? MaxDuration { get; set; }
 }
 
 /// <summary>capture.json schema.</summary>
@@ -174,6 +243,8 @@ public sealed class CaptureConfigFile
     public AudioMode? Audio { get; set; }
     /// <summary>Disk usage warning threshold.</summary>
     public double? DiskWarnGB { get; set; }
+    /// <summary>Shut-off valve limits.</summary>
+    public LimitsConfig? Limits { get; set; }
     /// <summary>Replay buffer settings.</summary>
     public ReplayConfig? Replay { get; set; }
     /// <summary>Trigger rules.</summary>
@@ -208,6 +279,7 @@ public sealed class PostCaptureConfig
 /// <item><c>-capture</c> or <c>-capture video</c>: record the app's window from start to exit at native resolution.</item>
 /// <item><c>-capture screen 5</c>: a PNG every 5 seconds (any duration: 500ms, 10s, 1m) for as long as the app runs.</item>
 /// <item><c>-capture video screen 5</c>: both. Add <c>hq</c> for a hardware-HEVC tape instead of lossless.</item>
+/// <item><c>-capture video 8h</c>: stop after 8 hours (resource limits can stop it sooner; see <see cref="CaptureLimits"/>).</item>
 /// <item><c>-capture-config capture.json</c>: load settings and trigger rules.</item>
 /// </list>
 /// MINDATTIC_CAPTURE takes the same words ("video screen 5"); "0" is a kill switch.
@@ -228,6 +300,8 @@ public sealed record CaptureArgs
     public bool ScreenIntervalSpecified { get; init; }
     /// <summary>Tape quality (<c>hq</c> or <c>lossless</c>).</summary>
     public TapeQuality? Quality { get; init; }
+    /// <summary>A duration after <c>video</c> (<c>-capture video 8h</c>): stop capturing after this long.</summary>
+    public TimeSpan? MaxDuration { get; init; }
     /// <summary><c>-capture-config path</c>.</summary>
     public string? ConfigPath { get; init; }
     /// <summary>MINDATTIC_CAPTURE=0 disables capture entirely.</summary>
@@ -300,6 +374,7 @@ public sealed record CaptureArgs
         TimeSpan? screen = null;
         var specified = result.ScreenIntervalSpecified;
         var quality = result.Quality;
+        var maxDuration = result.MaxDuration;
         for (var i = 0; i < words.Count; i++)
         {
             var w = words[i].Trim().ToLowerInvariant();
@@ -307,6 +382,12 @@ public sealed record CaptureArgs
             {
                 case "video" or "1" or "true":
                     video = true;
+                    if (w == "video" && i + 1 < words.Count && DurationText.TryParse(words[i + 1], out var max))
+                    {
+                        if (max <= TimeSpan.Zero) throw new CaptureException(CaptureError.InvalidArgument, $"-capture video {words[i + 1]} must be positive.");
+                        maxDuration = max;
+                        i++;
+                    }
                     break;
                 case "screen" or "screenshots":
                     screen = DefaultScreenInterval;
@@ -338,6 +419,7 @@ public sealed record CaptureArgs
             ScreenInterval = screen ?? result.ScreenInterval,
             ScreenIntervalSpecified = specified,
             Quality = quality,
+            MaxDuration = maxDuration,
         };
     }
 }

@@ -233,6 +233,31 @@ public class EngineTests
     }
 
     [Test]
+    public async Task Valve_stops_and_exports_the_session_when_a_limit_is_crossed()
+    {
+        var engine = await CaptureEngine.StartNewAsync(new SyntheticHost(), Options(o =>
+        {
+            o.SessionRecording = true;
+            o.Limits.MaxDuration = TimeSpan.FromSeconds(3);
+            o.Limits.PollInterval = TimeSpan.FromMilliseconds(500);
+        }));
+        string? reason = null;
+        engine.LimitReached += r => reason = r;
+        var stem = Path.Combine(engine.SessionFolder, "Test_" + engine.SessionId);
+        var staging = Path.Combine(_root, ".staging", "Test_" + engine.SessionId);
+        var wait = Stopwatch.StartNew();
+        // The export ends by removing the staging tape.
+        while ((engine.Enabled || Directory.Exists(staging)) && wait.Elapsed < TimeSpan.FromSeconds(90)) await Task.Delay(200);
+        await engine.DisposeAsync(); // already stopped by the valve: a no-op
+
+        Assert.That(reason, Does.Contain("maximum duration"));
+        Assert.That(engine.Enabled, Is.False);
+        Assert.That(Probe(stem + ".mkv", "format=duration"), Is.EqualTo(3.0).Within(1.0));
+        Assert.That(File.ReadAllLines(stem + ".stats.csv"), Has.Length.GreaterThanOrEqualTo(4));
+        Assert.That(File.ReadAllText(stem + ".session.json"), Does.Contain("\"stoppedBy\": \"the maximum duration"));
+    }
+
+    [Test]
     public async Task Session_is_exported_when_the_engine_closes()
     {
         string folder, session;

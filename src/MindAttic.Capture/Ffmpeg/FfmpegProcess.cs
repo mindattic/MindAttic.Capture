@@ -122,6 +122,8 @@ internal sealed class FfmpegProcess : IAsyncDisposable
     public IReadOnlyList<string> Args { get; }
     public string StderrTail => string.Join(Environment.NewLine, _tail);
     public bool HasExited => _process.HasExited;
+    /// <summary>The ffmpeg process itself (for resource polling).</summary>
+    public Process Process => _process;
 
     /// <summary>Raw-frame stdin (data mode only).</summary>
     public Stream DataStdin => _dataStdin ? _process.StandardInput.BaseStream : throw new InvalidOperationException("Not a data-pipe ffmpeg.");

@@ -200,6 +200,50 @@ public class OutputManagerTests
     }
 }
 
+public class ResourceValveTests
+{
+    private static ValveSample S(double? disk = 5000, double? mem = 16000, double? enc = 300, double? lag = 1, double minutes = 1) =>
+        new(TimeSpan.FromMinutes(minutes), disk, mem, 20, 400, enc, lag, minutes * 60, 100, 0, 30);
+
+    [Test]
+    public void Healthy_sample_keeps_the_valve_open() =>
+        Assert.That(ResourceValve.Check(S(), new CaptureLimits()), Is.Null);
+
+    [Test]
+    public void Each_default_limit_closes_the_valve()
+    {
+        var l = new CaptureLimits { MaxDuration = TimeSpan.FromHours(2) };
+        Assert.That(ResourceValve.Check(S(disk: 49), l), Does.Contain("GB free"));
+        Assert.That(ResourceValve.Check(S(mem: 1000), l), Does.Contain("memory"));
+        Assert.That(ResourceValve.Check(S(enc: 5000), l), Does.Contain("backing up"));
+        Assert.That(ResourceValve.Check(S(lag: 61), l), Does.Contain("behind"));
+        Assert.That(ResourceValve.Check(S(minutes: 120), l), Does.Contain("maximum duration"));
+    }
+
+    [Test]
+    public void Unknown_readings_and_disabled_limits_never_trip()
+    {
+        var off = new CaptureLimits { MinFreeDiskGB = null, MinFreeMemoryMB = null, MaxEncoderMemoryMB = null, MaxEncoderLagSeconds = null };
+        Assert.That(ResourceValve.Check(S(disk: 1, mem: 1, enc: 99999, lag: 999), off), Is.Null);
+        Assert.That(ResourceValve.Check(S(disk: null, mem: null, enc: null, lag: null), new CaptureLimits()), Is.Null);
+    }
+
+    [Test]
+    public void Video_duration_word_and_config_set_the_limits()
+    {
+        var a = CaptureArgs.Parse(["-capture", "video", "8h", "hq"], environment: "");
+        Assert.That((a.Video, a.MaxDuration, a.Quality), Is.EqualTo((true, (TimeSpan?)TimeSpan.FromHours(8), (TapeQuality?)TapeQuality.HighQuality)));
+        Assert.That(new CaptureOptions().Apply(a).Limits.MaxDuration, Is.EqualTo(TimeSpan.FromHours(8)));
+
+        var o = new CaptureOptions().Apply(new CaptureConfigFile
+        {
+            Limits = new LimitsConfig { MinFreeDiskGB = 0, MaxEncoderMemoryMB = 8192, MaxDuration = "90m", PollEvery = "2s" },
+        });
+        Assert.That((o.Limits.MinFreeDiskGB, o.Limits.MaxEncoderMemoryMB, o.Limits.MaxDuration, o.Limits.PollInterval),
+            Is.EqualTo(((double?)null, (double?)8192, (TimeSpan?)TimeSpan.FromMinutes(90), TimeSpan.FromSeconds(2))));
+    }
+}
+
 public class FfmpegLocatorTests
 {
     private string _root = "";

@@ -45,6 +45,7 @@ Game.exe -capture video                 # film from start to exit at the app's n
 Game.exe -capture screen 5              # a PNG every 5 seconds until exit (also 500ms, 10s, 1m)
 Game.exe -capture video screen 5        # both
 Game.exe -demo -capture video hq        # hardware HEVC tape (~0.2 GB/min) instead of lossless
+Game.exe -capture video 8h              # stop after 8 hours (the shut-off valve can stop it sooner)
 Game.exe -capture                       # same as -capture video
 Game.exe -capture video -capture-config capture.json
 set MINDATTIC_CAPTURE=video screen 5    # same words via the environment; MINDATTIC_CAPTURE=0 is a kill switch
@@ -60,6 +61,27 @@ crashes, a job object stops ffmpeg, the finished segments stay on disk, and the 
 `capture recover`) exports them as `session-recovered`.
 
 If `R:` is missing, output falls back to `%USERPROFILE%\Videos\MindAttic` with a warning.
+
+### The shut-off valve
+
+A long run can't fill the disk or exhaust memory. While capture runs, the engine polls the
+machine every 5 s. The first limit crossed stops capture and exports everything recorded so far,
+exactly as if the app had closed. The app keeps running, and nothing is deleted.
+
+| Limit (`limits` in capture.json) | Default | Why |
+|---|---|---|
+| `minFreeDiskGB` | 50 | output (and staging) drive nearly full |
+| `minFreeMemoryMB` | 2048 | the machine is running out of RAM |
+| `maxEncoderMemoryMB` | 4096 | frames are backing up inside ffmpeg (the drive or CPU can't keep up) |
+| `maxEncoderLagSeconds` | 60 | the encoder is that far behind real time |
+| `maxDuration` | off | `-capture video 8h`, or `"maxDuration": "8h"` |
+
+Set a numeric limit to 0 to turn it off, or `"enabled": false` to turn the whole valve off.
+`pollEvery` changes the interval. Every poll is appended to `{RepoName}_{start}.stats.csv`. That
+file records free disk, available RAM, CPU, app and encoder memory, encoder lag, tape time,
+frames written and dropped, and the drive's write rate. The engine log goes to
+`{RepoName}_{start}.log`, with a status line each minute. The session manifest records the
+lowest and highest values seen, plus `stoppedBy` when the valve closed.
 
 ## Quick start
 
@@ -79,7 +101,8 @@ record Play Mode. Game code raises events with `CaptureUnity.Raise("battle-compl
 `Assets/StreamingAssets/capture.json`.
 
 **Websites:** `MindAttic.Browser.exe <url | site folder> -capture video`. A folder is served at
-`https://<folder>.local/`. Pages (in the browser, any WebView2 with the bridge, or plain browsers
+`https://<folder>.local/`, and its captures are named after the folder (`mindattic.com\mindattic.com_<timestamp>.mkv`)
+or, for generic folders like `dist` or `wwwroot`, after the repository. A URL's captures are named after its host. Pages (in the browser, any WebView2 with the bridge, or plain browsers
 with `capture serve`) call:
 
 ```js
@@ -142,6 +165,7 @@ Placed beside the exe (picked up automatically), or passed with `-capture-config
   ],
   "hotkeys": { "F9": "screenshot", "F10": "toggle-recording", "F11": "save-replay" },
   "diskWarnGB": 500,
+  "limits": { "minFreeDiskGB": 50, "minFreeMemoryMB": 2048, "maxEncoderMemoryMB": 4096, "maxEncoderLagSeconds": 60, "maxDuration": "8h" },
   "postCapture": [ { "on": "replay", "run": "pwsh -File notify.ps1 \"{path}\"" } ]
 }
 ```

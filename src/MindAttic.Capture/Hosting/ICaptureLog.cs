@@ -53,6 +53,62 @@ public sealed class TextWriterCaptureLog(TextWriter writer, CaptureLogLevel mini
     }
 }
 
+/// <summary>
+/// Passes entries to the host's log and, once <see cref="Open"/> is called, also appends them to the
+/// session's .log file next to its captures. Entries before that are buffered, so the file starts at engine start.
+/// </summary>
+internal sealed class SessionLogFile(ICaptureLog inner) : ICaptureLog
+{
+    private const int MaxBuffered = 200;
+    private readonly object _gate = new();
+    private readonly List<string> _buffer = [];
+    private string? _path;
+    private bool _failed;
+
+    public void Log(CaptureLogLevel level, string message, Exception? exception = null)
+    {
+        inner.Log(level, message, exception);
+        if (level < CaptureLogLevel.Info) return;
+        var line = $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff} {level.ToString().ToUpperInvariant(),-7} {message}" +
+                   (exception is null ? "" : $" ({exception.GetType().Name}: {exception.Message})");
+        lock (_gate)
+        {
+            if (_path is null)
+            {
+                if (_buffer.Count < MaxBuffered) _buffer.Add(line);
+                return;
+            }
+            Append([line]);
+        }
+    }
+
+    /// <summary>Starts writing to <paramref name="path"/>, beginning with everything logged so far.</summary>
+    public void Open(string path)
+    {
+        lock (_gate)
+        {
+            if (_path is not null) return;
+            _path = path;
+            Append(_buffer);
+            _buffer.Clear();
+        }
+    }
+
+    private void Append(IEnumerable<string> lines)
+    {
+        if (_failed || _path is null) return;
+        try
+        {
+            File.AppendAllLines(_path, lines);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _failed = true;
+            inner.Log(CaptureLogLevel.Warning, $"Could not write the capture log to {_path}: {ex.Message}");
+        }
+    }
+}
+
 internal static class LogExtensions
 {
     public static void Debug(this ICaptureLog log, string m) => log.Log(CaptureLogLevel.Debug, m);

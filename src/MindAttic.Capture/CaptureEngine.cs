@@ -21,6 +21,7 @@ public sealed class CaptureEngine : ICapture
     private readonly CaptureOptions _options;
     private readonly ICaptureHost _host;
     private readonly ICaptureLog _log;
+    private readonly SessionLogFile _logFile;
     private readonly ICaptureJson _json;
     private readonly OutputManager _output;
     private readonly TriggerEngine _triggers;
@@ -36,6 +37,8 @@ public sealed class CaptureEngine : ICapture
     private readonly ConcurrentDictionary<string, byte> _warnedOnce = new();
     private Task? _eventWorker;
     private Task? _intervalLoop;
+    private ResourceValve? _valve;
+    private Task? _valveLoop;
     private CaptureTape? _tape;
     private int _tapeCount;
     private int _leaseIds;
@@ -54,7 +57,7 @@ public sealed class CaptureEngine : ICapture
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _options = options ?? throw new ArgumentNullException(nameof(options));
-        _log = options.Log;
+        _log = _logFile = new SessionLogFile(options.Log);
         _json = options.Json ?? throw new CaptureException(CaptureError.InvalidArgument, "CaptureOptions.Json must be set on this platform (netstandard2.1).");
         _output = new OutputManager(options, host.Name, _json, _log);
         _output.DiskWarning += gb => DiskWarning?.Invoke(gb);
@@ -123,6 +126,34 @@ public sealed class CaptureEngine : ICapture
                 _log.Info($"Recording this session to {_output.SessionDir}");
             }
         }
+        if (_tape is not null || _intervalLoop is not null)
+        {
+            _logFile.Open(_output.SessionStem + ".log");
+            _valve = new ResourceValve(_options.Limits, _log, () => _tape, _output.Root, _output.SessionStem + ".stats.csv");
+            _valveLoop = Task.Run(RunValveAsync);
+        }
+    }
+
+    // ---------------------------------------------------------------- shut-off valve
+
+    /// <summary>Raised when the shut-off valve stops capture because a resource limit was crossed; the argument says which.</summary>
+    public event Action<string>? LimitReached;
+
+    private async Task RunValveAsync()
+    {
+        var reason = await _valve!.RunAsync(_shutdown.Token).ConfigureAwait(false);
+        if (reason is null) return;
+        Diagnostics.StoppedBy = reason;
+        try
+        {
+            LimitReached?.Invoke(reason);
+        }
+        catch (Exception ex)
+        {
+            _log.Warn("A LimitReached handler threw.", ex);
+        }
+        // Stop and export exactly as if the app had closed; the app keeps running, later capture calls are no-ops.
+        await DisposeAsync().ConfigureAwait(false);
     }
 
     // ---------------------------------------------------------------- screenshots
@@ -686,6 +717,13 @@ public sealed class CaptureEngine : ICapture
                 var request = new FinalizeRequest { EndSeconds = end, Markers = _output.MarkersSnapshot() };
                 File.WriteAllText(Path.Combine(tape.Dir, "finalize.json"), _json.Serialize(request));
             }
+        }
+        if (_valve is { } valve)
+        {
+            Diagnostics.MinFreeDiskGB = valve.MinFreeDiskGB;
+            Diagnostics.MinAvailableMemoryMB = valve.MinAvailableMemoryMB;
+            Diagnostics.MaxEncoderMemoryMB = valve.MaxEncoderMemoryMB;
+            Diagnostics.MaxCpuPercent = valve.MaxCpuPercent;
         }
         _output.Manifest.Ended = DateTimeOffset.Now;
         _output.Manifest.Diagnostics = Diagnostics.ToDictionary();

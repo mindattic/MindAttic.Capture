@@ -46,6 +46,9 @@
         <member name="M:MindAttic.Capture.CaptureEngine.StartAsync(System.Threading.CancellationToken)">
             <summary>Validates options, loads rules, and starts the tape when session recording or the replay buffer is on.</summary>
         </member>
+        <member name="E:MindAttic.Capture.CaptureEngine.LimitReached">
+            <summary>Raised when the shut-off valve stops capture because a resource limit was crossed; the argument says which.</summary>
+        </member>
         <member name="M:MindAttic.Capture.CaptureEngine.ScreenshotAsync(System.String,MindAttic.Capture.ScreenshotOptions)">
             <inheritdoc/>
         </member>
@@ -161,6 +164,12 @@
         <member name="P:MindAttic.Capture.CaptureOptions.DiskWarnGB">
             <summary>Warn (log plus <see cref="E:MindAttic.Capture.ICapture.DiskWarning"/>) when the app's capture folder exceeds this size. Nothing is deleted.</summary>
         </member>
+        <member name="P:MindAttic.Capture.CaptureOptions.Limits">
+            <summary>
+            The shut-off valve: resource limits polled while capture runs. Crossing one stops capture and exports
+            what was recorded, so a long run can't fill the disk or exhaust memory. The app keeps running.
+            </summary>
+        </member>
         <member name="P:MindAttic.Capture.CaptureOptions.Rules">
             <summary>Declarative trigger rules (also loadable from capture.json).</summary>
         </member>
@@ -190,6 +199,57 @@
         </member>
         <member name="M:MindAttic.Capture.CaptureOptions.Apply(MindAttic.Capture.CaptureConfigFile)">
             <summary>Applies an already-parsed config file.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.CaptureLimits">
+            <summary>
+            Resource limits for the shut-off valve. Each is checked every <see cref="P:MindAttic.Capture.CaptureLimits.PollInterval"/>; the first one
+            crossed stops capture (recorded footage is exported, nothing is deleted). Null turns a limit off.
+            </summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureLimits.Enabled">
+            <summary>Master switch for the valve (stats are still logged when off).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureLimits.PollInterval">
+            <summary>How often resources are polled.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureLimits.MinFreeDiskGB">
+            <summary>Stop when the output (or staging) volume has less free space than this.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureLimits.MinFreeMemoryMB">
+            <summary>Stop when the machine has less available physical memory than this.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureLimits.MaxEncoderMemoryMB">
+            <summary>Stop when the tape encoder's private memory passes this; it grows when frames back up inside ffmpeg.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureLimits.MaxEncoderLagSeconds">
+            <summary>Stop when the tape encoder falls this far behind real time.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureLimits.MaxDuration">
+            <summary>Stop after capturing this long (<c>-capture video 8h</c>). Off by default.</summary>
+        </member>
+        <member name="T:MindAttic.Capture.LimitsConfig">
+            <summary>"limits" in capture.json. Durations are text ("5s", "8h"); 0 turns a numeric limit off.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.LimitsConfig.Enabled">
+            <summary>Valve on/off.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.LimitsConfig.PollEvery">
+            <summary>Poll interval, e.g. "5s".</summary>
+        </member>
+        <member name="P:MindAttic.Capture.LimitsConfig.MinFreeDiskGB">
+            <summary>Minimum free disk, GB.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.LimitsConfig.MinFreeMemoryMB">
+            <summary>Minimum available memory, MB.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.LimitsConfig.MaxEncoderMemoryMB">
+            <summary>Maximum encoder memory, MB.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.LimitsConfig.MaxEncoderLagSeconds">
+            <summary>Maximum encoder lag, seconds.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.LimitsConfig.MaxDuration">
+            <summary>Maximum capture length, e.g. "8h".</summary>
         </member>
         <member name="T:MindAttic.Capture.CaptureConfigFile">
             <summary>capture.json schema.</summary>
@@ -226,6 +286,9 @@
         </member>
         <member name="P:MindAttic.Capture.CaptureConfigFile.DiskWarnGB">
             <summary>Disk usage warning threshold.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureConfigFile.Limits">
+            <summary>Shut-off valve limits.</summary>
         </member>
         <member name="P:MindAttic.Capture.CaptureConfigFile.Replay">
             <summary>Replay buffer settings.</summary>
@@ -264,6 +327,7 @@
             <item><c>-capture</c> or <c>-capture video</c>: record the app's window from start to exit at native resolution.</item>
             <item><c>-capture screen 5</c>: a PNG every 5 seconds (any duration: 500ms, 10s, 1m) for as long as the app runs.</item>
             <item><c>-capture video screen 5</c>: both. Add <c>hq</c> for a hardware-HEVC tape instead of lossless.</item>
+            <item><c>-capture video 8h</c>: stop after 8 hours (resource limits can stop it sooner; see <see cref="T:MindAttic.Capture.CaptureLimits"/>).</item>
             <item><c>-capture-config capture.json</c>: load settings and trigger rules.</item>
             </list>
             MINDATTIC_CAPTURE takes the same words ("video screen 5"); "0" is a kill switch.
@@ -286,6 +350,9 @@
         </member>
         <member name="P:MindAttic.Capture.CaptureArgs.Quality">
             <summary>Tape quality (<c>hq</c> or <c>lossless</c>).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureArgs.MaxDuration">
+            <summary>A duration after <c>video</c> (<c>-capture video 8h</c>): stop capturing after this long.</summary>
         </member>
         <member name="P:MindAttic.Capture.CaptureArgs.ConfigPath">
             <summary><c>-capture-config path</c>.</summary>
@@ -613,6 +680,9 @@
         <member name="T:MindAttic.Capture.Ffmpeg.FfmpegProcess">
             <summary>An ffmpeg child process: captured stderr, graceful stop, killed with the app via a job object.</summary>
         </member>
+        <member name="P:MindAttic.Capture.Ffmpeg.FfmpegProcess.Process">
+            <summary>The ffmpeg process itself (for resource polling).</summary>
+        </member>
         <member name="P:MindAttic.Capture.Ffmpeg.FfmpegProcess.DataStdin">
             <summary>Raw-frame stdin (data mode only).</summary>
         </member>
@@ -864,6 +934,21 @@
         <member name="M:MindAttic.Capture.Hosting.TextWriterCaptureLog.Log(MindAttic.Capture.Hosting.CaptureLogLevel,System.String,System.Exception)">
             <inheritdoc/>
         </member>
+        <member name="T:MindAttic.Capture.Hosting.SessionLogFile">
+            <summary>
+            Passes entries to the host's log and, once <see cref="M:MindAttic.Capture.Hosting.SessionLogFile.Open(System.String)"/> is called, also appends them to the
+            session's .log file next to its captures. Entries before that are buffered, so the file starts at engine start.
+            </summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.SessionLogFile.#ctor(MindAttic.Capture.Hosting.ICaptureLog)">
+            <summary>
+            Passes entries to the host's log and, once <see cref="M:MindAttic.Capture.Hosting.SessionLogFile.Open(System.String)"/> is called, also appends them to the
+            session's .log file next to its captures. Entries before that are buffered, so the file starts at engine start.
+            </summary>
+        </member>
+        <member name="M:MindAttic.Capture.Hosting.SessionLogFile.Open(System.String)">
+            <summary>Starts writing to <paramref name="path"/>, beginning with everything logged so far.</summary>
+        </member>
         <member name="T:MindAttic.Capture.ICapture">
             <summary>
             The one capture API every host exposes. Calls are thread-safe and never block the calling
@@ -951,6 +1036,21 @@
         </member>
         <member name="P:MindAttic.Capture.CaptureDiagnostics.MaxEncoderLagSeconds">
             <summary>Furthest the tape encoder fell behind real time, in seconds (0 when it kept up).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.StoppedBy">
+            <summary>Why the shut-off valve stopped capture early (null when it ran until the app closed).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.MinFreeDiskGB">
+            <summary>Lowest free space seen on the output drive, GB.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.MinAvailableMemoryMB">
+            <summary>Lowest available physical memory seen, MB.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.MaxEncoderMemoryMB">
+            <summary>Highest tape-encoder private memory seen, MB.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.CaptureDiagnostics.MaxCpuPercent">
+            <summary>Highest whole-machine CPU use seen, percent.</summary>
         </member>
         <member name="P:MindAttic.Capture.CaptureDiagnostics.AverageStillMs">
             <summary>Average time to grab a still, in milliseconds.</summary>
@@ -1069,6 +1169,24 @@
         <member name="T:MindAttic.Capture.Internal.DurationText">
             <summary>Parses "1500ms", "5s", "2.5s", "3m", "1h"; a bare number means seconds.</summary>
         </member>
+        <member name="T:MindAttic.Capture.Internal.SystemStats">
+            <summary>Machine-wide memory and CPU readings (Windows; other platforms report nothing).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Internal.SystemStats.AvailableMemoryMB">
+            <summary>Physical memory available to new allocations, in MB (null when unknown).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Internal.SystemStats.TotalMemoryMB">
+            <summary>Installed physical memory, in MB (null when unknown).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Internal.SystemStats.CpuPercent">
+            <summary>Whole-machine CPU use since the previous call, 0-100 (null on the first call or when unknown).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Internal.SystemStats.PrivateMemoryMB(System.Diagnostics.Process)">
+            <summary>Private (committed) memory of a process in MB, or null if it has exited.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Internal.SystemStats.FreeDiskGB(System.String)">
+            <summary>Free space on the volume holding <paramref name="path"/>, in GB (null when unknown).</summary>
+        </member>
         <member name="T:MindAttic.Capture.Output.ExportJob">
             <summary>What to cut from a tape and what to produce.</summary>
         </member>
@@ -1117,6 +1235,25 @@
             <see cref="P:MindAttic.Capture.CaptureOptions.PostCapture"/> (config files the developer controls), never from events or the JS bridge.
             </summary>
         </member>
+        <member name="T:MindAttic.Capture.ValveSample">
+            <summary>One poll of the resources the valve watches. Null means "unknown on this platform".</summary>
+        </member>
+        <member name="M:MindAttic.Capture.ValveSample.#ctor(System.TimeSpan,System.Nullable{System.Double},System.Nullable{System.Double},System.Nullable{System.Double},System.Nullable{System.Double},System.Nullable{System.Double},System.Nullable{System.Double},System.Double,System.Int64,System.Int64,System.Nullable{System.Double})">
+            <summary>One poll of the resources the valve watches. Null means "unknown on this platform".</summary>
+        </member>
+        <member name="T:MindAttic.Capture.ResourceValve">
+            <summary>
+            The shut-off valve: polls disk, memory, CPU and the tape encoder while capture runs, logs a status line
+            each minute, appends every sample to {session}.stats.csv, and closes (stops capture) when a
+            <see cref="T:MindAttic.Capture.CaptureLimits"/> limit is crossed.
+            </summary>
+        </member>
+        <member name="M:MindAttic.Capture.ResourceValve.RunAsync(System.Threading.CancellationToken)">
+            <summary>Polls until cancelled or a limit trips; returns the reason it closed, or null.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.ResourceValve.Check(MindAttic.Capture.ValveSample,MindAttic.Capture.CaptureLimits)">
+            <summary>The first limit <paramref name="s"/> crosses, as a sentence, or null.</summary>
+        </member>
         <member name="T:MindAttic.Capture.SessionFinalizer">
             <summary>
             Turns a stopped session tape into session.mkv/.mp4 in the session folder. Runs in-process, in a
@@ -1152,6 +1289,12 @@
         </member>
         <member name="P:MindAttic.Capture.Tape.CaptureTape.MaxLagSeconds">
             <summary>Furthest the encoder has fallen behind real time, in seconds.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Tape.CaptureTape.EncoderProcess">
+            <summary>The encoder process (for resource polling).</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Tape.CaptureTape.FixedTimestep">
+            <summary>True for fixed-timestep tapes, which slow the game down instead of lagging.</summary>
         </member>
         <member name="M:MindAttic.Capture.Tape.CaptureTape.CurrentLag">
             <summary>How far finished segments trail the tape clock right now.</summary>

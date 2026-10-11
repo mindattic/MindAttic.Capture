@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using MindAttic.Capture.Browser;
 using MindAttic.Capture.WebView2;
@@ -29,6 +30,24 @@ public class BrowserTargetTests
     {
         var t = Parse(@"D:\Web\page.html", "--host", "demo.local");
         Assert.That((t.Url, t.SiteFolder, t.VirtualHost), Is.EqualTo(("https://demo.local/page.html", @"D:\Web", "demo.local")));
+    }
+
+    [Test]
+    public void Site_folder_names_the_captures_and_generic_folders_fall_back_to_the_repo()
+    {
+        Assert.That(BrowserTarget.SubjectName(@"D:\Projects\MindAttic\MindAttic.Web\mindattic.com", "mindattic.com"), Is.EqualTo("mindattic.com"));
+        var repo = Path.Combine(Path.GetTempPath(), "mac-repo-" + Guid.NewGuid().ToString("N"));
+        var dist = Path.Combine(repo, "MySite", "dist");
+        Directory.CreateDirectory(Path.Combine(repo, ".git"));
+        Directory.CreateDirectory(dist);
+        try
+        {
+            Assert.That(BrowserTarget.SubjectName(dist, "dist"), Is.EqualTo(Path.GetFileName(repo)));
+        }
+        finally
+        {
+            Directory.Delete(repo, recursive: true);
+        }
     }
 
     [Test]

@@ -85,6 +85,16 @@ public sealed class CaptureDiagnostics
     public long FramesDropped { get; internal set; }
     /// <summary>Furthest the tape encoder fell behind real time, in seconds (0 when it kept up).</summary>
     public double MaxEncoderLagSeconds { get; internal set; }
+    /// <summary>Why the shut-off valve stopped capture early (null when it ran until the app closed).</summary>
+    public string? StoppedBy { get; internal set; }
+    /// <summary>Lowest free space seen on the output drive, GB.</summary>
+    public double? MinFreeDiskGB { get; internal set; }
+    /// <summary>Lowest available physical memory seen, MB.</summary>
+    public double? MinAvailableMemoryMB { get; internal set; }
+    /// <summary>Highest tape-encoder private memory seen, MB.</summary>
+    public double? MaxEncoderMemoryMB { get; internal set; }
+    /// <summary>Highest whole-machine CPU use seen, percent.</summary>
+    public double? MaxCpuPercent { get; internal set; }
     /// <summary>Average time to grab a still, in milliseconds.</summary>
     public double AverageStillMs { get; internal set; }
     /// <summary>Slowest still grab, in milliseconds.</summary>
@@ -103,6 +113,11 @@ public sealed class CaptureDiagnostics
         ["host"] = Host, ["videoSource"] = VideoSource, ["tapeEncoder"] = TapeEncoder, ["mp4Encoder"] = Mp4Encoder,
         ["framesWritten"] = FramesWritten, ["framesDropped"] = FramesDropped,
         ["maxEncoderLagSeconds"] = Math.Round(MaxEncoderLagSeconds, 1),
+        ["stoppedBy"] = StoppedBy,
+        ["minFreeDiskGB"] = MinFreeDiskGB is { } disk ? Math.Round(disk, 1) : null,
+        ["minAvailableMemoryMB"] = MinAvailableMemoryMB is { } mem ? Math.Round(mem) : null,
+        ["maxEncoderMemoryMB"] = MaxEncoderMemoryMB is { } enc ? Math.Round(enc) : null,
+        ["maxCpuPercent"] = MaxCpuPercent is { } cpu ? Math.Round(cpu) : null,
         ["averageStillMs"] = Math.Round(AverageStillMs, 2), ["maxStillMs"] = Math.Round(MaxStillMs, 2),
         ["screenshots"] = Screenshots, ["videos"] = Videos, ["failures"] = Failures, ["eventsRaised"] = EventsRaised,
     };

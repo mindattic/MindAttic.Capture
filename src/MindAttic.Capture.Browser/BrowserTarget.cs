@@ -51,7 +51,7 @@ internal sealed record BrowserTarget(string Url, string? SiteFolder, string? Vir
             var name = Path.GetFileName(folder.TrimEnd('\\', '/'));
             var vhost = host ?? HostName(name);
             var index = new[] { "index.htm", "index.html" }.FirstOrDefault(f => fileExists(Path.Combine(folder, f))) ?? "";
-            return new BrowserTarget($"https://{vhost}/{index}", folder, vhost, CaptureNaming.RepoName(folder) ?? name);
+            return new BrowserTarget($"https://{vhost}/{index}", folder, vhost, SubjectName(folder, name));
         }
         if (fileExists(target) && Path.GetExtension(target).ToLowerInvariant() is ".htm" or ".html")
         {
@@ -59,11 +59,23 @@ internal sealed record BrowserTarget(string Url, string? SiteFolder, string? Vir
             var folder = Path.GetDirectoryName(full)!;
             var name = Path.GetFileName(folder);
             var vhost = host ?? HostName(name);
-            return new BrowserTarget($"https://{vhost}/{Uri.EscapeDataString(Path.GetFileName(full))}", folder, vhost, CaptureNaming.RepoName(folder) ?? name);
+            return new BrowserTarget($"https://{vhost}/{Uri.EscapeDataString(Path.GetFileName(full))}", folder, vhost, SubjectName(folder, name));
         }
         var url = NormalizeUrl(target);
         return new BrowserTarget(url, null, null, Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Host.Length > 0 ? u.Host : "MindAttic.Browser");
     }
+
+    private static readonly HashSet<string> GenericFolders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "dist", "build", "out", "public", "wwwroot", "www", "site", "html", "docs", "src", "static",
+    };
+
+    /// <summary>
+    /// What the captures are named after: the site folder ("mindattic.com", so every file says which site it shows),
+    /// or the repository when the folder name says nothing (dist, wwwroot, ...).
+    /// </summary>
+    internal static string SubjectName(string folder, string name) =>
+        GenericFolders.Contains(name) ? CaptureNaming.RepoName(folder) ?? name : name;
 
     /// <summary>Address-bar text to a URL: keeps schemes, adds https:// to host-like text, searches otherwise.</summary>
     public static string NormalizeUrl(string text)
