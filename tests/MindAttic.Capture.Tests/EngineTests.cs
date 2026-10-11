@@ -245,11 +245,12 @@ public class EngineTests
         }
         Assert.That(folder, Is.EqualTo(Path.Combine(_root, "Test")));
         Assert.That(session, Does.Match(@"^\d{4}-\d\d-\d\dT\d\d\.\d\d\.\d\d\.\d{3}$"));
-        var mkv = Path.Combine(folder, session + ".mkv");
+        var stem = Path.Combine(folder, "Test_" + session);
+        var mkv = stem + ".mkv";
         Assert.That(File.Exists(mkv), Is.True);
-        Assert.That(File.Exists(Path.Combine(folder, session + ".mp4")), Is.True);
+        Assert.That(File.Exists(stem + ".mp4"), Is.True);
         Assert.That(Probe(mkv, "format=duration"), Is.EqualTo(3.0).Within(0.5));
-        Assert.That(File.ReadAllText(Path.Combine(folder, session + ".session.json")), Does.Contain("\"kind\": \"session\""));
+        Assert.That(File.ReadAllText(stem + ".session.json"), Does.Contain("\"kind\": \"session\""));
         Assert.That(Directory.Exists(Path.Combine(_root, ".staging", "Test_" + session)), Is.False);
     }
 

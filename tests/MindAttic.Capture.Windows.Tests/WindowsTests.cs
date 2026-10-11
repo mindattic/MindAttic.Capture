@@ -197,7 +197,7 @@ public class DesktopIntegrationTests
                 Assert.That(still.Succeeded, Is.True, still.Error);
                 await Task.Delay(2500);
             }
-            var mkv = Path.Combine(folder, session + ".mkv");
+            var mkv = Path.Combine(folder, "WinTest_" + session + ".mkv");
             Assert.That(File.Exists(mkv), Is.True);
             Assert.That(double.Parse(Probe(mkv, "format=duration"), System.Globalization.CultureInfo.InvariantCulture), Is.EqualTo(2.5).Within(1.0));
         }

@@ -176,8 +176,8 @@ internal sealed class OutputManager
         }
     }
 
-    /// <summary>{app folder}\{session start}: the session video and its manifest ({stem}.session.json).</summary>
-    public string SessionStem => Path.Combine(SessionDir, SessionId);
+    /// <summary>{app folder}\{app}_{session start}: the session video and its manifest ({stem}.session.json).</summary>
+    public string SessionStem => Path.Combine(SessionDir, $"{Sanitize(_options.AppName)}_{SessionId}");
 
     /// <summary>Tape segments live here: on the output volume so finalizing never copies across drives.</summary>
     public string StagingDir => Path.Combine(Root, ".staging", $"{Sanitize(_options.AppName)}_{SessionId}");

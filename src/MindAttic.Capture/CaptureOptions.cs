@@ -24,8 +24,11 @@ public sealed class CaptureOptions
     /// <summary>Build version written to sidecars and the session manifest.</summary>
     public string? AppVersion { get; set; } = Assembly.GetEntryAssembly()?.GetName().Version?.ToString();
 
-    /// <summary>File name template (default "{timestamp}", e.g. 2026-10-11T14.29.20.123). Tokens: {timestamp} {date} {time} {session} {tag} {index} {kind} {app}.</summary>
-    public string FileTemplate { get; set; } = "{timestamp}";
+    /// <summary>
+    /// File name template (default "{app}_{timestamp}", e.g. UnitySolarSystem_2026-10-11T14.29.20.123), so a file
+    /// says what it shows even outside its folder. Tokens: {timestamp} {date} {time} {session} {tag} {index} {kind} {app}.
+    /// </summary>
+    public string FileTemplate { get; set; } = "{app}_{timestamp}";
 
     /// <summary>ffmpeg executable: full path, or a name found next to the app or on PATH.</summary>
     public string FfmpegPath { get; set; } = "ffmpeg";

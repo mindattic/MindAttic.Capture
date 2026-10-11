@@ -92,7 +92,7 @@
             </summary>
         </member>
         <member name="T:MindAttic.Capture.CaptureNaming">
-            <summary>Output naming: R:\MindAttic\Capture\{RepoName}\{timestamp}.{ext}.</summary>
+            <summary>Output naming: R:\MindAttic\Capture\{RepoName}\{RepoName}_{timestamp}.{ext}.</summary>
         </member>
         <member name="M:MindAttic.Capture.CaptureNaming.Timestamp(System.DateTimeOffset)">
             <summary>
@@ -126,7 +126,10 @@
             <summary>Build version written to sidecars and the session manifest.</summary>
         </member>
         <member name="P:MindAttic.Capture.CaptureOptions.FileTemplate">
-            <summary>File name template (default "{timestamp}", e.g. 2026-10-11T14.29.20.123). Tokens: {timestamp} {date} {time} {session} {tag} {index} {kind} {app}.</summary>
+            <summary>
+            File name template (default "{app}_{timestamp}", e.g. UnitySolarSystem_2026-10-11T14.29.20.123), so a file
+            says what it shows even outside its folder. Tokens: {timestamp} {date} {time} {session} {tag} {index} {kind} {app}.
+            </summary>
         </member>
         <member name="P:MindAttic.Capture.CaptureOptions.FfmpegPath">
             <summary>ffmpeg executable: full path, or a name found next to the app or on PATH.</summary>
@@ -1097,7 +1100,7 @@
             <summary>{root}\{app}\ — every capture of this app lands here, named by timestamp; created on first use.</summary>
         </member>
         <member name="P:MindAttic.Capture.Output.OutputManager.SessionStem">
-            <summary>{app folder}\{session start}: the session video and its manifest ({stem}.session.json).</summary>
+            <summary>{app folder}\{app}_{session start}: the session video and its manifest ({stem}.session.json).</summary>
         </member>
         <member name="P:MindAttic.Capture.Output.OutputManager.StagingDir">
             <summary>Tape segments live here: on the output volume so finalizing never copies across drives.</summary>

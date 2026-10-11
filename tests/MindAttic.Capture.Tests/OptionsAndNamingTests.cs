@@ -141,14 +141,14 @@ public class OutputManagerTests
     }
 
     [Test]
-    public void Captures_go_straight_into_the_app_folder_named_by_iso_timestamp()
+    public void Captures_go_straight_into_the_app_folder_named_by_app_and_iso_timestamp()
     {
         var m = Manager(new CaptureOptions().FileTemplate);
         Assert.That(m.SessionDir, Is.EqualTo(Path.Combine(_dir, "My_App")));
         Assert.That(m.SessionId, Is.EqualTo("2026-10-11T14.30.05.123"));
-        Assert.That(m.SessionStem, Is.EqualTo(Path.Combine(_dir, "My_App", "2026-10-11T14.30.05.123")));
-        Assert.That(m.NextStem(CaptureKind.Screenshot, "x"), Is.EqualTo(Path.Combine(_dir, "My_App", "2026-10-11T14.30.05.123")));
-        Assert.That(m.NextStem(CaptureKind.Screenshot, "x"), Is.EqualTo(Path.Combine(_dir, "My_App", "2026-10-11T14.30.05.123_2")));
+        Assert.That(m.SessionStem, Is.EqualTo(Path.Combine(_dir, "My_App", "My_App_2026-10-11T14.30.05.123")));
+        Assert.That(m.NextStem(CaptureKind.Screenshot, "x"), Is.EqualTo(Path.Combine(_dir, "My_App", "My_App_2026-10-11T14.30.05.123")));
+        Assert.That(m.NextStem(CaptureKind.Screenshot, "x"), Is.EqualTo(Path.Combine(_dir, "My_App", "My_App_2026-10-11T14.30.05.123_2")));
     }
 
     [Test]

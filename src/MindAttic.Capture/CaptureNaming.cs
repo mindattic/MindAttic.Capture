@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace MindAttic.Capture;
 
-/// <summary>Output naming: R:\MindAttic\Capture\{RepoName}\{timestamp}.{ext}.</summary>
+/// <summary>Output naming: R:\MindAttic\Capture\{RepoName}\{RepoName}_{timestamp}.{ext}.</summary>
 public static class CaptureNaming
 {
     /// <summary>

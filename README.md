@@ -7,8 +7,8 @@ hit", "battle complete") or recorded for a whole run with `-capture`.
 ```text
  your app / game                     MindAttic.Capture                               R:\MindAttic\Capture\
  ───────────────                     ─────────────────                               ─────────────────────
- Capture.Raise("critical-hit") ──>  trigger rules ──> replay / clip / screenshot ──>  {RepoName}\{timestamp}.{ext}
- -capture video / screen N     ──>  session tape (1 s segments, lossless FFV1)  ──>    {start}.mkv + .mp4
+ Capture.Raise("critical-hit") ──>  trigger rules ──> replay / clip / screenshot ──>  {RepoName}\{RepoName}_{timestamp}.{ext}
+ -capture video / screen N     ──>  session tape (1 s segments, lossless FFV1)  ──>    {RepoName}_{start}.mkv + .mp4
  ScreenshotAsync / ClipAsync   ──>  host adapter (desktop, WPF, WebView2, Unity)       *.png  *.mp4  *.json sidecars
                                                                                         session.json manifest
 ```
@@ -23,7 +23,7 @@ hit", "battle complete") or recorded for a whole run with `-capture`.
 | `capture.exe` (agent) | net10.0-windows10.0.19041 | CLI and localhost API: record any app with no code changes, serve browser pages and scripts, finalize and recover sessions. |
 | `com.mindattic.capture` (Unity) | Unity 6, Windows | Game-view capture via GPU readback, game audio, Play Mode menu; reads `-capture` from the player command line. |
 
-Install the agent and browser once with `tools\install.ps1` (to `%LOCALAPPDATA%\MindAttic\Capturein`; add `-AddToPath` for `capture` everywhere). With the agent installed, apps hand their session export to it and exit immediately.
+Install the agent and browser once with `tools\install.ps1` (to `%LOCALAPPDATA%\MindAttic\Capture\bin`; add `-AddToPath` for `capture` everywhere). With the agent installed, apps hand their session export to it and exit immediately.
 
 Video is encoded by **ffmpeg** (`choco install ffmpeg`, or put `ffmpeg.exe` next to the app). Hardware encoders (NVENC → QuickSync → AMF) are probed automatically, with a software fallback.
 
@@ -53,7 +53,7 @@ set MINDATTIC_CAPTURE=video screen 5    # same words via the environment; MINDAT
 `-capture` followed by anything that isn't a capture word (for example an app's own `-capture <folder>`)
 is left alone. `-demo` and other flags belong to the app: capture only records what runs.
 
-When the app closes, the session goes to `R:\MindAttic\Capture\{RepoName}\{session start}.mkv`
+When the app closes, the session goes to `R:\MindAttic\Capture\{RepoName}\{RepoName}_{session start}.mkv`
 and `.mp4`, alongside every screenshot, clip and replay its events triggered. If `capture.exe` is
 installed, the export runs in a detached process so the app exits immediately. If the app
 crashes, a job object stops ffmpeg, the finished segments stay on disk, and the next launch (or
@@ -129,7 +129,7 @@ Placed beside the exe (picked up automatically), or passed with `-capture-config
 ```json
 {
   "outputRoot": "R:\\Recording",
-  "fileTemplate": "{timestamp}",
+  "fileTemplate": "{app}_{timestamp}",
   "tapeQuality": "Lossless",
   "audio": "App",
   "replay": { "armed": true, "seconds": 30 },
@@ -171,16 +171,20 @@ Placed beside the exe (picked up automatically), or passed with `-capture-config
 
 ## Output
 
-Everything goes to `R:\MindAttic\Capture\{RepoName}\`, named by ISO 8601 local time with `:` replaced by `.`
+Everything goes to `R:\MindAttic\Capture\{RepoName}\`. Each file name starts with the project name, so a file
+copied elsewhere still says what it shows, followed by ISO 8601 local time with `:` replaced by `.`
 (Windows file names cannot contain `:`):
 
 ```
 R:\MindAttic\Capture\UnitySolarSystem\
-  2026-10-11T14.38.02.625.session.json          session manifest: app, version, events, markers, captures, diagnostics
-  2026-10-11T14.38.02.625.mkv / .mp4 / .thumb.jpg / .mkv.json   the -capture video session (named by its start)
-  2026-10-11T14.38.03.577.png / .png.json        a screenshot and its sidecar
-  2026-10-11T14.39.12.004.mkv / .mp4             a replay, clip or recording
+  UnitySolarSystem_2026-10-11T14.38.02.625.session.json   session manifest: app, version, events, markers, captures, diagnostics
+  UnitySolarSystem_2026-10-11T14.38.02.625.mkv / .mp4 / .thumb.jpg / .mkv.json   the -capture video session (named by its start)
+  UnitySolarSystem_2026-10-11T14.38.03.577.png / .png.json   a screenshot and its sidecar
+  UnitySolarSystem_2026-10-11T14.39.12.004.mkv / .mp4        a replay, clip or recording
 ```
+
+`tools\prefix-existing-captures.ps1` renames captures made before the prefix (and fixes the names inside their
+manifests). It only renames, skips files still in use, and is safe to re-run.
 
 `{RepoName}` is the git repository the app runs from (an app in `bin\Debug`, a Unity project, a local site
 folder), so projects that share a product name (GridGame, GridGame2025, GridGame2026) still get separate
