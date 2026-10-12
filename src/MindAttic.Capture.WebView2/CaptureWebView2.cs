@@ -143,7 +143,10 @@ public static class CaptureWebView2
                 capture.ResumeRecording();
                 return new { ok = true };
             case "status":
-                return new { ok = true, enabled = capture.Enabled, recording = capture.IsRecording, session = capture.SessionId };
+                // `recording` is the StartRecording/StopRecording on-demand clip toggle; `tapeRunning` is
+                // whether the whole-session tape (the `-capture video` flag) is actually capturing right
+                // now — the signal a page needs to ask "is anyone filming me for a demo/trailer?"
+                return new { ok = true, enabled = capture.Enabled, recording = capture.IsRecording, tapeRunning = capture.Diagnostics.TapeRunning, session = capture.SessionId };
             default:
                 throw new ArgumentException($"Unknown operation \"{Str("op")}\".");
         }

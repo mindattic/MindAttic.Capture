@@ -4,7 +4,7 @@
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <PackageId>MindAttic.Capture.WebView2</PackageId>
     <!-- HOUSE-LAW-1: whole-number versions only; bump the major. -->
-    <Version>1.0.0</Version>
+    <Version>2.0.0</Version>
     <Description>JavaScript bridge for MindAttic.Capture in WebView2: pages call window.mindattic.capture.raise/screenshot/clip/replay.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- The WebView2 package drags in its WPF/WinForms controls; this library only uses CoreWebView2. -->

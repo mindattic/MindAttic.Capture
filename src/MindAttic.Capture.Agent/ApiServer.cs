@@ -201,7 +201,8 @@ internal sealed class ApiServer : IAsyncDisposable
 
     private object Status() => new
     {
-        session = _capture.SessionId, folder = _capture.SessionFolder, recording = _capture.IsRecording, enabled = _capture.Enabled,
+        session = _capture.SessionId, folder = _capture.SessionFolder, recording = _capture.IsRecording,
+        tapeRunning = _capture.Diagnostics.TapeRunning, enabled = _capture.Enabled,
     };
 
     private async Task<object> DispatchAsync(string op, JsonElement body)
