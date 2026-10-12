@@ -99,8 +99,9 @@ then honor `-capture video` / `-capture screen 5`; in the editor use **MindAttic
 record Play Mode. Game code raises events with `CaptureUnity.Raise("battle-complete")`; rules go in
 `Assets/StreamingAssets/capture.json`.
 
-**Websites:** `MindAttic.Browser.exe <url | site folder> -capture video`, from its own repo,
-[MindAttic.Browser](https://github.com/mindattic/MindAttic.Browser). A folder is served at
+**Websites:** `C:\Apps\MindAttic.Browser\MindAttic.Browser.exe <url | site folder> -capture video`. Capture
+always uses this deployed copy of [MindAttic.Browser](https://github.com/mindattic/MindAttic.Browser) (`capture run --url`
+included); deploy or refresh it with that repo's `tools\deploy.ps1`. A folder is served at
 `https://<folder>.local/`, and its captures are named after the folder (`mindattic.com\mindattic.com_<timestamp>.mkv`)
 or, for generic folders like `dist` or `wwwroot`, after the repository. A URL's captures are named after its host. Pages (in the browser, any WebView2 with the bridge, or plain browsers
 with `capture serve`) call:
@@ -134,7 +135,7 @@ capture.Engine.Triggers.On("boss-death").Replay(TimeSpan.FromSeconds(15), TimeSp
 ```
 capture run -- Game.exe -demo                  # record the app's window from launch to exit
 capture run --window "Notepad" -- notepad.exe  # launcher stubs: name the real window
-capture run --url http://localhost:5173        # record a web app in an Edge app window
+capture run --url http://localhost:5173        # record a web app in the deployed MindAttic Browser
 capture shot --region 0,0,1920,1080 --format png
 capture record --monitor 0 --duration 30s --preset devlog
 capture replay --window "GridGame" --length 30s   # Enter or `capture save` saves the last 30 s

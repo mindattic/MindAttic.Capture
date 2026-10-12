@@ -12,6 +12,21 @@ using NUnit.Framework;
 
 namespace MindAttic.Capture.Windows.Tests;
 
+public class BrowserLocatorTests
+{
+    [Test]
+    public void Capture_always_drives_the_browser_deployed_in_C_Apps() =>
+        Assert.That(BrowserLocator.DeployedPath, Is.EqualTo(@"C:\Apps\MindAttic.Browser\MindAttic.Browser.exe"));
+
+    [Test]
+    public void A_missing_deployment_fails_loudly_with_how_to_deploy()
+    {
+        var ex = Assert.Throws<CaptureException>(() => BrowserLocator.Require(@"Z:\nowhere\MindAttic.Browser.exe"));
+        Assert.That(ex!.Message, Does.Contain("deploy.ps1"));
+        Assert.That(BrowserLocator.Require(Environment.ProcessPath!), Is.EqualTo(Environment.ProcessPath));
+    }
+}
+
 public class DesktopInputTests
 {
     private static readonly PixelRect[] TwoOutputs = [new(0, 0, 1920, 1080), new(1920, 0, 2560, 1440)];

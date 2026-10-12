@@ -62,7 +62,7 @@ namespace MindAttic.Capture.Agent
                   capture shot   <target> [--format png|jpg|webp|bmp|raw] [--tag T]
                   capture record <target> [--duration 30s] [--preset trailer|lossless|devlog|bugreport] [--outputs mp4,gif]
                   capture replay <target> [--length 30s]   keep a rolling buffer; Enter or `capture save` saves it
-                  capture run    [--url URL | -- app.exe args]   record an app for its whole run (its window, until it exits)
+                  capture run    [--url URL|folder | -- app.exe args]   record an app (--url: in C:\Apps\MindAttic.Browser) until it exits
                   capture serve  <target> [--port 47800] [--allow-origin URL]   localhost API for browsers and scripts
                   capture raise  <event> [key=value ...]   send an event to a running `capture serve`
                   capture stop | save                      signal a running record/replay/run/serve
@@ -139,7 +139,7 @@ namespace MindAttic.Capture.Agent
             return 0;
         }
 
-        /// <summary>Launches an app (or an Edge app window for --url) and records its window as a session until it exits.</summary>
+        /// <summary>Launches an app (or the deployed MindAttic Browser for --url) and records its window as a session until it exits.</summary>
         private static async Task<int> RunAsync(AgentArgs args, ICaptureLog log)
         {
             var url = args.Get("url");
@@ -187,20 +187,26 @@ namespace MindAttic.Capture.Agent
             }
         }
 
+        /// <summary>
+        /// Opens <paramref name="url"/> (a URL or a local site folder) in the deployed MindAttic Browser
+        /// (C:\Apps\MindAttic.Browser), which this agent then records. Its process lives exactly as long as its window.
+        /// </summary>
         private static (Process Process, string AppName, string? ProfileDir) LaunchBrowserApp(string url)
         {
-            var edge = new[]
+            var browser = BrowserLocator.Require();
+            var psi = new ProcessStartInfo(browser) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(browser)! };
+            psi.ArgumentList.Add(url);
+            var name = Directory.Exists(url) ? Path.GetFileName(Path.GetFullPath(url).TrimEnd('\\', '/'))
+                : Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Host.Length > 0 ? $"{uri.Host}{(uri.IsDefaultPort ? "" : "-" + uri.Port)}"
+                : "Browser";
+            try
             {
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Microsoft\Edge\Application\msedge.exe"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Microsoft\Edge\Application\msedge.exe"),
-            }.FirstOrDefault(File.Exists) ?? throw new CaptureException(CaptureError.TargetNotFound, "Microsoft Edge was not found; --url needs it.");
-            // A private profile makes this a separate browser instance whose lifetime is the window's.
-            var profile = Path.Combine(Path.GetTempPath(), "mindattic-capture-edge-" + Guid.NewGuid().ToString("N")[..8]);
-            var psi = new ProcessStartInfo(edge) { UseShellExecute = false };
-            foreach (var a in new[] { $"--app={url}", $"--user-data-dir={profile}", "--no-first-run", "--no-default-browser-check", "--window-size=1600,900" })
-                psi.ArgumentList.Add(a);
-            var name = Uri.TryCreate(url, UriKind.Absolute, out var uri) ? $"{uri.Host}{(uri.IsDefaultPort ? "" : "-" + uri.Port)}" : "Browser";
-            return (Process.Start(psi)!, name, profile);
+                return (Process.Start(psi)!, name, null);
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                throw new CaptureException(CaptureError.TargetNotFound, $"Could not start MindAttic Browser at {browser}: {ex.Message}", ex);
+            }
         }
 
         private static async Task<int> ServeAsync(AgentArgs args, ICaptureLog log)
