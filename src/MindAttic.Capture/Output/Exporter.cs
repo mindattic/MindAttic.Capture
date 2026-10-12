@@ -105,6 +105,10 @@ internal sealed class Exporter(string ffmpeg, Func<Task<EncoderSet>> encoders, I
         for (var i = 0; i < job.Ranges.Count; i++)
         {
             var (a, b) = job.Ranges[i];
+            // Video is stream-copied, so it can only start on a keyframe. HQ tapes have one per segment: start the
+            // range there, or the concat demuxer emits video from the keyframe while audio starts at the inpoint.
+            if (job.State.Quality != TapeQuality.Lossless)
+                a = job.Segments.LastOrDefault(s => s.Start <= a && s.End > a && File.Exists(s.File))?.Start ?? a;
             var (pieces, coveredStart, coveredEnd) = TapeSegments.Select(job.Segments, a, b);
             if (pieces.Count == 0) continue;
             var duration = coveredEnd - coveredStart;

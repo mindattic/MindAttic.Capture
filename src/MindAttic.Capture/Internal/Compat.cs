@@ -29,8 +29,15 @@ namespace MindAttic.Capture.Internal
             process.EnableRaisingEvents = true;
             process.Exited += (_, _) => tcs.TrySetResult(true);
             if (process.HasExited) tcs.TrySetResult(true);
-            if (ct.CanBeCanceled) ct.Register(() => tcs.TrySetCanceled());
-            return tcs.Task.ContinueWith(t => { if (!t.IsCanceled) process.WaitForExit(); return t; }, TaskScheduler.Default).Unwrap();
+            var registration = ct.CanBeCanceled ? ct.Register(() => tcs.TrySetCanceled()) : default;
+            // Give redirected output a bounded moment to reach EOF; an unbounded WaitForExit() hangs forever when a
+            // surviving child process (a package-manager shim's real ffmpeg) holds the pipe open.
+            return tcs.Task.ContinueWith(t =>
+            {
+                registration.Dispose();
+                if (!t.IsCanceled) process.WaitForExit(5000);
+                return t;
+            }, TaskScheduler.Default).Unwrap();
 #endif
         }
 

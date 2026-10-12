@@ -128,7 +128,14 @@ internal sealed class ApiServer : IAsyncDisposable
             if (req.IsWebSocketRequest && req.Url?.AbsolutePath == "/ws")
             {
                 var ws = await ctx.AcceptWebSocketAsync(null);
-                await WebSocketLoopAsync(ws.WebSocket);
+                try
+                {
+                    await WebSocketLoopAsync(ws.WebSocket);
+                }
+                catch (Exception ex) when (ex is WebSocketException or OperationCanceledException or HttpListenerException)
+                {
+                    // The page closed or the agent is stopping: a normal disconnect, not a failed request.
+                }
                 return;
             }
             JsonElement body = default;
@@ -181,8 +188,10 @@ internal sealed class ApiServer : IAsyncDisposable
                 var op = msg.GetProperty("op").GetString() ?? "";
                 reply = op == "status" ? Status() : await DispatchAsync(op, msg);
             }
-            catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException or CaptureException or FormatException)
+            catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException or CaptureException or FormatException
+                                           or ArgumentException or OverflowException)
             {
+                // A bad message gets an error reply; the socket stays open for the next one.
                 reply = new { error = ex.Message };
             }
             var json = JsonSerializer.Serialize(new { id, reply });
@@ -239,15 +248,18 @@ internal sealed class ApiServer : IAsyncDisposable
             case "record/resume":
                 _capture.ResumeRecording();
                 return new { ok = true };
+            // Same bounds as the WebView2 bridge: a huge value would overflow TimeSpan or hold the tape open for days.
             case "clip":
-                return Result(await _capture.ClipAsync(TimeSpan.FromSeconds(Num("seconds") ?? 10), Str("tag") ?? "clip", new RecordingOptions { Data = Data() }));
+                return Result(await _capture.ClipAsync(TimeSpan.FromSeconds(Clamp(Num("seconds") ?? 10, 0.5, 600)), Str("tag") ?? "clip", new RecordingOptions { Data = Data() }));
             case "replay":
-                return Result(await _capture.SaveReplayAsync(TimeSpan.FromSeconds(Num("before") ?? 15), TimeSpan.FromSeconds(Num("after") ?? 0),
-                    Str("tag") ?? "replay", new RecordingOptions { Data = Data() }));
+                return Result(await _capture.SaveReplayAsync(TimeSpan.FromSeconds(Clamp(Num("before") ?? 15, 0, 3600)),
+                    TimeSpan.FromSeconds(Clamp(Num("after") ?? 0, 0, 600)), Str("tag") ?? "replay", new RecordingOptions { Data = Data() }));
             default:
                 throw new ArgumentException($"Unknown operation \"{op}\".");
         }
     }
+
+    private static double Clamp(double v, double min, double max) => double.IsNaN(v) ? min : Math.Max(min, Math.Min(max, v));
 
     private static object Result(CaptureResult r) => new
     {
@@ -270,8 +282,13 @@ internal sealed class ApiServer : IAsyncDisposable
         _stop.Cancel();
         _listener.Close();
         if (_loop is not null) await _loop;
-        try { File.Delete(InfoFile); }
-        catch (IOException) { }
+        // Only remove agent.json if it is still ours; a second agent started later owns it now.
+        try
+        {
+            using var info = JsonDocument.Parse(File.ReadAllText(InfoFile));
+            if (info.RootElement.TryGetProperty("token", out var t) && t.GetString() == _token) File.Delete(InfoFile);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
     }
 }
 

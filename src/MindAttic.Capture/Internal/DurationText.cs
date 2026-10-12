@@ -24,7 +24,9 @@ internal static class DurationText
             _ when t.EndsWith("h") => (t.Substring(0, t.Length - 1), 3600.0),
             _ => (t, 1.0),
         };
-        if (!double.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) || n < 0 || double.IsInfinity(n)) return false;
+        // "nan" and huge numbers parse as doubles but TimeSpan.FromSeconds throws on them.
+        if (!double.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) || double.IsNaN(n) || n < 0
+            || n * scale >= TimeSpan.MaxValue.TotalSeconds) return false;
         value = TimeSpan.FromSeconds(n * scale);
         return true;
     }

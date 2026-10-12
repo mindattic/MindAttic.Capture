@@ -115,7 +115,15 @@ public class DurationTextTests
     [TestCase("")]
     [TestCase("abc")]
     [TestCase("-5s")]
+    [TestCase("nan")]
+    [TestCase("NaNs")]
+    [TestCase("1e300")]
+    [TestCase("1e15h")]
     public void Rejects(string text) => Assert.That(DurationText.TryParse(text, out _), Is.False);
+
+    [Test]
+    public void A_non_duration_word_after_capture_is_ignored_not_fatal() =>
+        Assert.That(CaptureArgs.Parse(["-capture", "video", "nan"], environment: "").Video, Is.True);
 }
 
 public class OutputManagerTests
@@ -229,6 +237,34 @@ public class ResourceValveTests
     }
 
     [Test]
+    public void Zero_turns_a_limit_off_and_duration_applies_with_limits_disabled()
+    {
+        var zero = new CaptureLimits { MinFreeDiskGB = 0, MinFreeMemoryMB = 0, MaxEncoderMemoryMB = 0, MaxEncoderLagSeconds = 0, MaxDuration = TimeSpan.Zero };
+        Assert.That(ResourceValve.Check(S(minutes: 600), zero), Is.Null);
+        var off = new CaptureLimits { Enabled = false, MaxDuration = TimeSpan.FromMinutes(5) };
+        Assert.That(ResourceValve.Check(S(disk: 1, minutes: 1), off), Is.Null);
+        Assert.That(ResourceValve.Check(S(disk: 1, minutes: 6), off), Does.Contain("maximum duration"));
+        var o = new CaptureOptions().Apply(new CaptureConfigFile { Limits = new LimitsConfig { MaxDuration = "0" } });
+        Assert.That(o.Limits.MaxDuration, Is.Null);
+    }
+
+    [Test]
+    public void Command_line_flags_win_over_the_config_file()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "capture-cli-" + Guid.NewGuid().ToString("N") + ".json");
+        File.WriteAllText(path, """{ "tapeQuality": "Lossless", "limits": { "maxDuration": "1h" } }""");
+        try
+        {
+            var o = new CaptureOptions().Apply(CaptureArgs.Parse(["-capture", "video", "8h", "hq", "-capture-config", path], environment: ""));
+            Assert.That((o.TapeQuality, o.Limits.MaxDuration), Is.EqualTo((TapeQuality.HighQuality, (TimeSpan?)TimeSpan.FromHours(8))));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
     public void Video_duration_word_and_config_set_the_limits()
     {
         var a = CaptureArgs.Parse(["-capture", "video", "8h", "hq"], environment: "");
@@ -242,6 +278,20 @@ public class ResourceValveTests
         Assert.That((o.Limits.MinFreeDiskGB, o.Limits.MaxEncoderMemoryMB, o.Limits.MaxDuration, o.Limits.PollInterval),
             Is.EqualTo(((double?)null, (double?)8192, (TimeSpan?)TimeSpan.FromMinutes(90), TimeSpan.FromSeconds(2))));
     }
+}
+
+public class PostCaptureTests
+{
+    private static readonly CaptureResult Shot = new()
+    {
+        Kind = CaptureKind.Screenshot, Tag = "boss", Files = [@"C:\Users\John Smith\Videos\App\App_1.png"],
+    };
+
+    [TestCase("tool {path}", @"tool ""C:\Users\John Smith\Videos\App\App_1.png""")]
+    [TestCase(@"""C:\Program Files\tool.exe"" ""{path}""", @"""C:\Program Files\tool.exe"" ""C:\Users\John Smith\Videos\App\App_1.png""")]
+    [TestCase("tool '{path}' {kind} {tag}", @"tool 'C:\Users\John Smith\Videos\App\App_1.png' screenshot boss")]
+    public void Path_is_quoted_exactly_once(string template, string expected) =>
+        Assert.That(PostCaptureRunner.Expand(template, Shot, "s1"), Is.EqualTo(expected));
 }
 
 public class FfmpegLocatorTests

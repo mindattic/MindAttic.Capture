@@ -263,14 +263,21 @@ internal sealed class FfmpegProcess : IAsyncDisposable
         try
         {
             p.Launch(log);
-            if (stdin is not null)
-            {
-                var input = p._process.StandardInput.BaseStream;
-                await input.WriteAsync(stdin, 0, stdin.Length, ct).ConfigureAwait(false);
-                input.Close();
-            }
             try
             {
+                if (stdin is not null)
+                {
+                    try
+                    {
+                        var input = p._process.StandardInput.BaseStream;
+                        await input.WriteAsync(stdin, 0, stdin.Length, ct).ConfigureAwait(false);
+                        input.Close();
+                    }
+                    catch (IOException)
+                    {
+                        // ffmpeg exited before reading all its input; its exit code and stderr below say why.
+                    }
+                }
                 await p._process.WaitForExitCompatAsync(ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)

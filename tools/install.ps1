@@ -1,4 +1,4 @@
-# Publishes the capture agent (capture.exe) and MindAttic Browser to %LOCALAPPDATA%\MindAttic\Capture\bin.
+# Publishes the capture agent (capture.exe) to %LOCALAPPDATA%\MindAttic\Capture\bin.
 # Apps find the agent there to export sessions after they exit; add the folder to PATH to use `capture` anywhere.
 # Safe while an export is running: a file in use is renamed to *.old (the running process keeps it) and replaced;
 # leftover *.old files are removed on the next install once nothing uses them.
@@ -9,7 +9,7 @@ $bin = Join-Path $env:LOCALAPPDATA 'MindAttic\Capture\bin'
 $stage = Join-Path ([IO.Path]::GetTempPath()) ("mindattic-capture-install-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $bin, $stage | Out-Null
 try {
-    foreach ($p in 'MindAttic.Capture.Agent', 'MindAttic.Capture.Browser') {
+    foreach ($p in @('MindAttic.Capture.Agent')) {
         dotnet publish (Join-Path $root "src\$p\$p.csproj") -c Release -o $stage --nologo -v q
         if ($LASTEXITCODE -ne 0) { throw "publish $p failed" }
     }
@@ -38,4 +38,4 @@ if ($AddToPath) {
         Write-Host "Added $bin to your user PATH (new terminals pick it up)."
     }
 }
-Write-Host "Installed capture.exe and MindAttic.Browser.exe to $bin"
+Write-Host "Installed capture.exe to $bin (MindAttic Browser now installs from its own repo, MindAttic.Browser)"

@@ -53,7 +53,7 @@ public static class SessionFinalizer
             var exporter = new Exporter(state.FfmpegPath, () => EncoderProbe.ProbeAsync(state.FfmpegPath, log), log);
             var spec = new PresetSpec(state.SessionOutputs == OutputFormats.None ? OutputFormats.Mkv | OutputFormats.Mp4 : state.SessionOutputs, 16, null, null);
             var sw = Stopwatch.StartNew();
-            var output = await exporter.ExportAsync(new ExportJob(tapeDir, state, segments, [(0, end)], state.SessionStem, spec, markers,
+            var output = await exporter.ExportAsync(new ExportJob(tapeDir, state, segments, [(0, end)], state.OutputStem ?? state.SessionStem, spec, markers,
                 request?.SeparateAudioTracks ?? false), ct).ConfigureAwait(false);
 
             var result = new CaptureResult
@@ -116,9 +116,10 @@ public static class SessionFinalizer
             {
                 if ((await RunAsync(tapeDir, json, log, ct).ConfigureAwait(false)).Count > 0) recovered++;
             }
-            catch (CaptureException ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                log.Error($"Could not recover {tapeDir}: {ex.Message}");
+                // One bad tape (corrupt finalize.json, I/O error) must not block recovery of the others.
+                log.Error($"Could not recover {tapeDir}: {ex.Message}", ex is CaptureException ? null : ex);
             }
         }
         return recovered;

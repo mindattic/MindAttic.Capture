@@ -1,64 +1,9 @@
 using System.IO;
 using System.Text.Json;
-using MindAttic.Capture.Browser;
 using MindAttic.Capture.WebView2;
 using NUnit.Framework;
 
 namespace MindAttic.Capture.Windows.Tests;
-
-public class BrowserTargetTests
-{
-    private static BrowserTarget Parse(params string[] args) =>
-        BrowserTarget.Parse(args, d => d == @"D:\Web\mindattic.com", f => f is @"D:\Web\mindattic.com\index.htm" or @"D:\Web\page.html");
-
-    [Test]
-    public void Folder_is_served_from_a_virtual_host()
-    {
-        var t = Parse(@"D:\Web\mindattic.com", "-capture", "video", "screen", "5");
-        Assert.That(t, Is.EqualTo(new BrowserTarget("https://mindattic.com.local/index.htm", @"D:\Web\mindattic.com", "mindattic.com.local", "mindattic.com")));
-    }
-
-    [Test]
-    public void Capture_words_are_not_mistaken_for_the_target()
-    {
-        var t = Parse("-capture", "screen", "5", "https://example.com/x");
-        Assert.That((t.Url, t.AppName), Is.EqualTo(("https://example.com/x", "example.com")));
-    }
-
-    [Test]
-    public void Html_file_maps_its_folder()
-    {
-        var t = Parse(@"D:\Web\page.html", "--host", "demo.local");
-        Assert.That((t.Url, t.SiteFolder, t.VirtualHost), Is.EqualTo(("https://demo.local/page.html", @"D:\Web", "demo.local")));
-    }
-
-    [Test]
-    public void Site_folder_names_the_captures_and_generic_folders_fall_back_to_the_repo()
-    {
-        Assert.That(BrowserTarget.SubjectName(@"D:\Projects\MindAttic\MindAttic.Web\mindattic.com", "mindattic.com"), Is.EqualTo("mindattic.com"));
-        var repo = Path.Combine(Path.GetTempPath(), "mac-repo-" + Guid.NewGuid().ToString("N"));
-        var dist = Path.Combine(repo, "MySite", "dist");
-        Directory.CreateDirectory(Path.Combine(repo, ".git"));
-        Directory.CreateDirectory(dist);
-        try
-        {
-            Assert.That(BrowserTarget.SubjectName(dist, "dist"), Is.EqualTo(Path.GetFileName(repo)));
-        }
-        finally
-        {
-            Directory.Delete(repo, recursive: true);
-        }
-    }
-
-    [Test]
-    public void No_target_opens_home() => Assert.That(Parse().Url, Is.EqualTo(BrowserTarget.Home));
-
-    [TestCase("mindattic.com", "https://mindattic.com")]
-    [TestCase("localhost:5173", "http://localhost:5173")]
-    [TestCase("https://a.b/c?d", "https://a.b/c?d")]
-    [TestCase("parasite eve", "https://www.bing.com/search?q=parasite%20eve")]
-    public void Address_bar_text_becomes_a_url(string text, string url) => Assert.That(BrowserTarget.NormalizeUrl(text), Is.EqualTo(url));
-}
 
 public class WebViewBridgeTests
 {

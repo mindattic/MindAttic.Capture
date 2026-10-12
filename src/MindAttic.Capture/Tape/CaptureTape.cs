@@ -90,7 +90,15 @@ internal sealed class CaptureTape : IAsyncDisposable
                 var clock = Stopwatch.StartNew();
                 var sink = new FrameSink(ffmpeg.DataStdin, push.Width * push.Height * 4, blocking: !push.RealTime, clock, log);
                 tape = new CaptureTape(dir, state, ffmpeg, push, sink, clock, log, json);
-                await push.StartAsync(sink, ct).ConfigureAwait(false);
+                try
+                {
+                    await push.StartAsync(sink, ct).ConfigureAwait(false);
+                }
+                catch
+                {
+                    await tape.AbandonAsync().ConfigureAwait(false);
+                    throw;
+                }
                 break;
             }
             default:
@@ -117,7 +125,15 @@ internal sealed class CaptureTape : IAsyncDisposable
                 log.Warn($"Audio track {audio[i].Name} could not start; recording without it.", ex);
             }
         }
-        tape.SaveState();
+        try
+        {
+            tape.SaveState();
+        }
+        catch
+        {
+            await tape.AbandonAsync().ConfigureAwait(false);
+            throw;
+        }
         log.Info($"Tape started: {state.Width}x{state.Height}@{state.Fps} {state.Quality} via {state.Source}, {tape._audio.Count} audio track(s).");
         return tape;
     }
@@ -180,7 +196,27 @@ internal sealed class CaptureTape : IAsyncDisposable
     private const double LagWarnSeconds = 10;
     private bool _lagWarned;
 
+    /// <summary>Timer callback: an exception escaping it would end the host process, and runs must not overlap.</summary>
     private void Sweep()
+    {
+        if (Interlocked.Exchange(ref _sweeping, 1) != 0) return;
+        try
+        {
+            SweepOnce();
+        }
+        catch (Exception ex)
+        {
+            if (Volatile.Read(ref _stopped) == 0) _log.Warn("Tape housekeeping failed; trying again shortly.", ex);
+        }
+        finally
+        {
+            Volatile.Write(ref _sweeping, 0);
+        }
+    }
+
+    private int _sweeping;
+
+    private void SweepOnce()
     {
         try
         {
@@ -261,6 +297,19 @@ internal sealed class CaptureTape : IAsyncDisposable
     }
 
     public async ValueTask DisposeAsync() => await StopAsync().ConfigureAwait(false);
+
+    /// <summary>A tape that failed to start: stop ffmpeg, the writer and the janitor without letting cleanup errors hide the original one.</summary>
+    private async Task AbandonAsync()
+    {
+        try
+        {
+            await StopAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.Warn("Cleaning up a tape that failed to start also failed.", ex);
+        }
+    }
 
     /// <summary>Copies pushed frames into a bounded queue drained by a writer thread into ffmpeg's stdin.</summary>
     private sealed class FrameSink : IFrameSink

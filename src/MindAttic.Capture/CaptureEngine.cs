@@ -43,10 +43,14 @@ public sealed class CaptureEngine : ICapture
     private int _tapeCount;
     private int _leaseIds;
     private string? _ffmpeg;
-    private int _started, _disposed;
+    private int _started, _disposed, _valveStarted;
+    private readonly object _disposeGate = new();
+    private Task? _disposeTask;
+    private volatile bool _closing;
     private double _stillMsTotal;
 
     private string? _recTag;
+    private Task? _recStart;
     private RecordingOptions? _recOptions;
     private DateTimeOffset _recStartedAt;
     private readonly List<(double Start, double? End)> _recRanges = [];
@@ -82,7 +86,7 @@ public sealed class CaptureEngine : ICapture
     /// <inheritdoc/>
     public string SessionFolder => _output.SessionDir;
     /// <inheritdoc/>
-    public bool IsRecording { get { lock (_recGate) return _recTag is not null; } }
+    public bool IsRecording { get { lock (_recGate) return _recTag is not null || _recStart is not null; } }
     /// <inheritdoc/>
     public CaptureDiagnostics Diagnostics { get; } = new();
     /// <inheritdoc/>
@@ -126,12 +130,7 @@ public sealed class CaptureEngine : ICapture
                 _log.Info($"Recording this session to {_output.SessionDir}");
             }
         }
-        if (_tape is not null || _intervalLoop is not null)
-        {
-            _logFile.Open(_output.SessionStem + ".log");
-            _valve = new ResourceValve(_options.Limits, _log, () => _tape, _output.Root, _output.SessionStem + ".stats.csv");
-            _valveLoop = Task.Run(RunValveAsync);
-        }
+        if (_tape is not null || _intervalLoop is not null) StartValve();
     }
 
     // ---------------------------------------------------------------- shut-off valve
@@ -139,21 +138,37 @@ public sealed class CaptureEngine : ICapture
     /// <summary>Raised when the shut-off valve stops capture because a resource limit was crossed; the argument says which.</summary>
     public event Action<string>? LimitReached;
 
+    /// <summary>Starts the valve and the session log once, for the first tape or screenshot loop (on-demand tapes included).</summary>
+    private void StartValve()
+    {
+        if (Interlocked.Exchange(ref _valveStarted, 1) != 0) return;
+        _logFile.Open(_output.SessionStem + ".log");
+        _valve = new ResourceValve(_options.Limits, _log, () => _tape, _output.Root, _output.SessionStem + ".stats.csv");
+        _valveLoop = Task.Run(RunValveAsync);
+    }
+
     private async Task RunValveAsync()
     {
-        var reason = await _valve!.RunAsync(_shutdown.Token).ConfigureAwait(false);
-        if (reason is null) return;
-        Diagnostics.StoppedBy = reason;
         try
         {
-            LimitReached?.Invoke(reason);
+            var reason = await _valve!.RunAsync(_shutdown.Token).ConfigureAwait(false);
+            if (reason is null) return;
+            Diagnostics.StoppedBy = reason;
+            try
+            {
+                LimitReached?.Invoke(reason);
+            }
+            catch (Exception ex)
+            {
+                _log.Warn("A LimitReached handler threw.", ex);
+            }
+            // Stop and export exactly as if the app had closed; the app keeps running, later capture calls are no-ops.
+            await DisposeAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _log.Warn("A LimitReached handler threw.", ex);
+            _log.Error("The capture valve could not stop capture cleanly.", ex);
         }
-        // Stop and export exactly as if the app had closed; the app keeps running, later capture calls are no-ops.
-        await DisposeAsync().ConfigureAwait(false);
     }
 
     // ---------------------------------------------------------------- screenshots
@@ -255,18 +270,42 @@ public sealed class CaptureEngine : ICapture
     // ---------------------------------------------------------------- video
 
     /// <inheritdoc/>
-    public async Task StartRecordingAsync(string tag, RecordingOptions? options = null)
+    public Task StartRecordingAsync(string tag, RecordingOptions? options = null)
     {
-        if (Guard(CaptureKind.Recording, tag) is not null) return;
-        var tape = await EnsureTapeAsync(_shutdown.Token).ConfigureAwait(false);
-        if (tape is null) return;
+        if (Guard(CaptureKind.Recording, tag) is not null) return Task.CompletedTask;
         lock (_recGate)
         {
-            if (_recTag is not null)
+            // A start still waiting for the tape counts as recording, so a quick second toggle stops it instead of starting twice.
+            if (_recTag is not null || _recStart is not null)
             {
-                _log.Warn($"Already recording \"{_recTag}\"; StartRecording(\"{tag}\") ignored.");
-                return;
+                _log.Warn($"Already recording \"{_recTag ?? "(starting)"}\"; StartRecording(\"{tag}\") ignored.");
+                return Task.CompletedTask;
             }
+            var start = Track(BeginRecordingAsync(tag, options));
+            _recStart = start.IsCompleted ? null : start;
+            return start;
+        }
+    }
+
+    private async Task<bool> BeginRecordingAsync(string tag, RecordingOptions? options)
+    {
+        try
+        {
+            var tape = await EnsureTapeAsync(_shutdown.Token).ConfigureAwait(false);
+            if (tape is null) return false;
+            BeginRecording(tape, tag, options);
+            return true;
+        }
+        finally
+        {
+            lock (_recGate) _recStart = null;
+        }
+    }
+
+    private void BeginRecording(CaptureTape tape, string tag, RecordingOptions? options)
+    {
+        lock (_recGate)
+        {
             _recTag = tag;
             _recOptions = options;
             _recStartedAt = DateTimeOffset.Now;
@@ -309,6 +348,9 @@ public sealed class CaptureEngine : ICapture
         DateTimeOffset startedAt;
         List<(double, double)> ranges;
         int lease;
+        Task? starting;
+        lock (_recGate) starting = _recStart;
+        if (starting is not null) await starting.ConfigureAwait(false);
         var tape = _tape;
         lock (_recGate)
         {
@@ -452,6 +494,11 @@ public sealed class CaptureEngine : ICapture
 
     private void OnRuleFired(TriggerRule rule, CaptureEvent e)
     {
+        if (_closing)
+        {
+            _log.Debug($"Rule {rule.EventPattern} fired after shutdown began; ignored.");
+            return;
+        }
         var tag = rule.Tag ?? e.Name;
         var recOptions = rule.Preset is { } p ? new RecordingOptions { Preset = p, Data = e.Data } : new RecordingOptions { Data = e.Data };
         _log.Debug($"Rule {rule.EventPattern} -> {rule.Action} ({tag}).");
@@ -523,22 +570,26 @@ public sealed class CaptureEngine : ICapture
         try
         {
             if (_tape is { IsRunning: true }) return _tape;
-            if (_tape is not null)
+            if (_tape is { } dead)
             {
                 _log.Error("The capture tape stopped unexpectedly; starting a new one.");
-                await _tape.StopAsync().ConfigureAwait(false);
+                await dead.StopAsync().ConfigureAwait(false);
+                // Its footage is part of the session: export it now rather than leaving it in staging.
+                if (dead.State.SessionRecording) await FinalizeSessionTapeAsync(dead, dead.Now, wait: false).ConfigureAwait(false);
             }
             var encoder = "ffv1";
             if (_options.TapeQuality == TapeQuality.HighQuality)
                 encoder = (await _encoders.Value.ConfigureAwait(false)).Hevc;
-            var dir = Path.Combine(_output.StagingDir, $"tape{Interlocked.Increment(ref _tapeCount)}");
+            var number = Interlocked.Increment(ref _tapeCount);
+            var dir = Path.Combine(_output.StagingDir, $"tape{number}");
             using var me = Process.GetCurrentProcess();
             var state = new TapeState
             {
                 AppName = _options.AppName, AppVersion = _options.AppVersion, SessionId = _output.SessionId,
                 SessionDir = _output.SessionDir, SessionStem = _output.SessionStem,
+                OutputStem = number == 1 ? null : $"{_output.SessionStem}_part{number}",
                 FfmpegPath = Ffmpeg, CreatedAt = DateTimeOffset.Now, Fps = _options.Fps, Quality = _options.TapeQuality, Encoder = encoder,
-                SessionRecording = _options.SessionRecording && _tapeCount == 1, SessionOutputs = _options.SessionOutputs,
+                SessionRecording = _options.SessionRecording, SessionOutputs = _options.SessionOutputs,
                 OwnerPid = me.Id, OwnerStartTicks = me.StartTime.ToUniversalTime().Ticks,
             };
             var source = _host.CreateVideoSource(_options.Fps);
@@ -552,6 +603,7 @@ public sealed class CaptureEngine : ICapture
             _output.Manifest.TapeQuality = state.Quality.ToString();
             _output.Manifest.TapeSource = state.Source;
             _output.Manifest.Encoder = encoder;
+            StartValve();
             return started;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -571,7 +623,12 @@ public sealed class CaptureEngine : ICapture
     {
         var tape = _tape;
         if (tape is null) return 0;
-        var floor = tape.Now - (_options.ReplayArmed ? _options.ReplayLength.TotalSeconds : 0) - 2;
+        // Keep enough for the longest replay rule too: its lease is only taken when it fires, by which time
+        // older segments would already be gone.
+        var back = _options.ReplayArmed ? _options.ReplayLength.TotalSeconds : 0;
+        foreach (var rule in _triggers.Rules)
+            if (rule.Action == TriggerAction.Replay) back = Math.Max(back, rule.Before.TotalSeconds);
+        var floor = tape.Now - back - 2;
         foreach (var lease in _leases.Values) floor = Math.Min(floor, lease);
         return floor;
     }
@@ -683,24 +740,46 @@ public sealed class CaptureEngine : ICapture
     /// Stops capture: finishes the active recording and pending exports, then (in session mode)
     /// hands the session export to the detached finalizer or runs it in-process.
     /// </summary>
-    public async ValueTask DisposeAsync()
+    /// <remarks>Every caller (the app, the shut-off valve) awaits the same shutdown, so a second call waits for the export too.</remarks>
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        lock (_disposeGate)
+        {
+            if (_disposeTask is null)
+            {
+                Volatile.Write(ref _disposed, 1);
+                _disposeTask = Task.Run(DisposeCoreAsync);
+            }
+            return new ValueTask(_disposeTask);
+        }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
         if (ReferenceEquals(Capture.Current, this)) Capture.Current = NullCapture.Instance;
         _triggers.Dispose();
         // Events raised just before shutdown still run their rules; drain them before waiting on captures.
         _drain.Cancel();
         if (_eventWorker is not null) await _eventWorker.CompletesWithin(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         if (_intervalLoop is not null) await _intervalLoop.CompletesWithin(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
-        if (IsRecording) await StopRecordingCoreAsync(null).ConfigureAwait(false);
+        await _triggers.DebouncesSettled().CompletesWithin(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
 
-        var pending = _pending.Keys.ToArray();
-        if (pending.Length > 0)
+        // Captures can start more captures (a rule's recording, a replay's after-window), so wait until none are left.
+        var budget = Stopwatch.StartNew();
+        var announced = false;
+        while (_pending.Keys.ToArray() is { Length: > 0 } pending)
         {
-            _log.Info($"Waiting for {pending.Length} capture(s) to finish...");
-            if (!await Task.WhenAll(pending).CompletesWithin(TimeSpan.FromMinutes(2)).ConfigureAwait(false))
+            if (!announced) _log.Info($"Waiting for {pending.Length} capture(s) to finish...");
+            announced = true;
+            var left = TimeSpan.FromMinutes(2) - budget.Elapsed;
+            if (left <= TimeSpan.Zero || !await Task.WhenAll(pending).CompletesWithin(left).ConfigureAwait(false))
+            {
                 _log.Warn("Some captures did not finish within 2 minutes and were abandoned.");
+                break;
+            }
         }
+        _closing = true;
+        if (IsRecording) await StopRecordingCoreAsync(null).ConfigureAwait(false);
         _shutdown.Cancel();
 
         var tape = _tape;
@@ -712,11 +791,7 @@ public sealed class CaptureEngine : ICapture
             Diagnostics.FramesDropped = tape.FramesDropped;
             Diagnostics.MaxEncoderLagSeconds = tape.MaxLagSeconds;
             Diagnostics.TapeRunning = false;
-            if (tape.State.SessionRecording)
-            {
-                var request = new FinalizeRequest { EndSeconds = end, Markers = _output.MarkersSnapshot() };
-                File.WriteAllText(Path.Combine(tape.Dir, "finalize.json"), _json.Serialize(request));
-            }
+            if (tape.State.SessionRecording) WriteFinalizeRequest(tape, end);
         }
         if (_valve is { } valve)
         {
@@ -731,24 +806,44 @@ public sealed class CaptureEngine : ICapture
 
         if (tape is not null)
         {
-            if (tape.State.SessionRecording)
-            {
-                if (_options.DetachedFinalizerPath is { } agent && File.Exists(agent))
-                {
-                    SessionFinalizer.SpawnDetached(agent, ["finalize", tape.Dir], _log);
-                    _log.Info($"Session export handed to the finalizer; it will appear in {_output.SessionDir}");
-                }
-                else
-                {
-                    _log.Info("Exporting the session recording...");
-                    await SessionFinalizer.RunAsync(tape.Dir, _json, _log, CancellationToken.None).ConfigureAwait(false);
-                }
-            }
-            else
-            {
-                SessionFinalizer.DeleteTape(tape.Dir);
-            }
+            if (tape.State.SessionRecording) await ExportSessionTapeAsync(tape, wait: true).ConfigureAwait(false);
+            else SessionFinalizer.DeleteTape(tape.Dir);
         }
         _tapeGate.Dispose();
+    }
+
+    private void WriteFinalizeRequest(CaptureTape tape, double end)
+    {
+        var request = new FinalizeRequest { EndSeconds = end, Markers = _output.MarkersSnapshot() };
+        File.WriteAllText(Path.Combine(tape.Dir, "finalize.json"), _json.Serialize(request));
+    }
+
+    /// <summary>A session tape replaced mid-run (its encoder died): request and start its export.</summary>
+    private async Task FinalizeSessionTapeAsync(CaptureTape tape, double end, bool wait)
+    {
+        try
+        {
+            WriteFinalizeRequest(tape, end);
+            await ExportSessionTapeAsync(tape, wait).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _log.Error($"Could not hand {tape.Dir} to the finalizer; the next launch will recover it.", ex);
+        }
+    }
+
+    /// <summary>Hands a stopped session tape to the detached finalizer, or exports it in-process.</summary>
+    private async Task ExportSessionTapeAsync(CaptureTape tape, bool wait)
+    {
+        if (_options.DetachedFinalizerPath is { } agent && File.Exists(agent))
+        {
+            SessionFinalizer.SpawnDetached(agent, ["finalize", tape.Dir], _log);
+            _log.Info($"Session export handed to the finalizer; it will appear in {_output.SessionDir}");
+            return;
+        }
+        _log.Info("Exporting the session recording...");
+        var export = Task.Run(() => SessionFinalizer.RunAsync(tape.Dir, _json, _log, CancellationToken.None));
+        if (wait) await export.ConfigureAwait(false);
+        else Track((Task)export);
     }
 }

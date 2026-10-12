@@ -79,7 +79,7 @@ internal sealed class ResourceValve
                 _lastStatusAt = sample.Elapsed;
                 _log.Info(Status(sample));
             }
-            if (_limits.Enabled && Check(sample, _limits) is { } reason)
+            if (Check(sample, _limits) is { } reason)
             {
                 _log.Warn($"Capture valve closed: {reason}. Stopping capture and exporting what was recorded ({Status(sample)}).");
                 return reason;
@@ -91,15 +91,19 @@ internal sealed class ResourceValve
     /// <summary>The first limit <paramref name="s"/> crosses, as a sentence, or null.</summary>
     internal static string? Check(ValveSample s, CaptureLimits l)
     {
-        if (l.MinFreeDiskGB is { } disk && s.FreeDiskGB is { } free && free < disk)
-            return $"only {free:0.#} GB free on the output drive (limit {disk:0.#} GB)";
-        if (l.MinFreeMemoryMB is { } mem && s.AvailableMemoryMB is { } avail && avail < mem)
-            return $"only {avail:0} MB of memory available (limit {mem:0} MB)";
-        if (l.MaxEncoderMemoryMB is { } enc && s.EncoderMemoryMB is { } used && used > enc)
-            return $"the encoder is using {used:0} MB, frames are backing up inside it (limit {enc:0} MB)";
-        if (l.MaxEncoderLagSeconds is { } lagLimit && s.EncoderLagSeconds is { } lag && lag > lagLimit)
-            return $"the encoder is {lag:0}s behind real time (limit {lagLimit:0}s)";
-        if (l.MaxDuration is { } max && s.Elapsed >= max)
+        // A duration cap the user asked for applies even with the resource limits switched off; a limit of 0 is off.
+        if (l.Enabled)
+        {
+            if (l.MinFreeDiskGB is > 0 and var disk && s.FreeDiskGB is { } free && free < disk)
+                return $"only {free:0.#} GB free on the output drive (limit {disk:0.#} GB)";
+            if (l.MinFreeMemoryMB is > 0 and var mem && s.AvailableMemoryMB is { } avail && avail < mem)
+                return $"only {avail:0} MB of memory available (limit {mem:0} MB)";
+            if (l.MaxEncoderMemoryMB is > 0 and var enc && s.EncoderMemoryMB is { } used && used > enc)
+                return $"the encoder is using {used:0} MB, frames are backing up inside it (limit {enc:0} MB)";
+            if (l.MaxEncoderLagSeconds is > 0 and var lagLimit && s.EncoderLagSeconds is { } lag && lag > lagLimit)
+                return $"the encoder is {lag:0}s behind real time (limit {lagLimit:0}s)";
+        }
+        if (l.MaxDuration is { } max && max > TimeSpan.Zero && s.Elapsed >= max)
             return $"the maximum duration of {DurationText.Seconds(max.TotalSeconds)}s was reached";
         return null;
     }
@@ -177,13 +181,16 @@ internal sealed class ResourceValve
 
     private string DescribeLimits()
     {
-        if (!_limits.Enabled) return "off (stats only)";
         var parts = new List<string>();
-        if (_limits.MinFreeDiskGB is { } d) parts.Add($"disk >= {d:0.#} GB free");
-        if (_limits.MinFreeMemoryMB is { } m) parts.Add($"RAM >= {m:0} MB free");
-        if (_limits.MaxEncoderMemoryMB is { } e) parts.Add($"encoder <= {e:0} MB");
-        if (_limits.MaxEncoderLagSeconds is { } l) parts.Add($"lag <= {l:0}s");
-        if (_limits.MaxDuration is { } t) parts.Add($"duration <= {t}");
+        if (!_limits.Enabled) parts.Add("resource limits off (stats only)");
+        else
+        {
+            if (_limits.MinFreeDiskGB is > 0 and var d) parts.Add($"disk >= {d:0.#} GB free");
+            if (_limits.MinFreeMemoryMB is > 0 and var m) parts.Add($"RAM >= {m:0} MB free");
+            if (_limits.MaxEncoderMemoryMB is > 0 and var e) parts.Add($"encoder <= {e:0} MB");
+            if (_limits.MaxEncoderLagSeconds is > 0 and var l) parts.Add($"lag <= {l:0}s");
+        }
+        if (_limits.MaxDuration is { } t && t > TimeSpan.Zero) parts.Add($"duration <= {t}");
         return parts.Count == 0 ? "none" : string.Join(", ", parts);
     }
 }

@@ -49,6 +49,9 @@
         <member name="E:MindAttic.Capture.CaptureEngine.LimitReached">
             <summary>Raised when the shut-off valve stops capture because a resource limit was crossed; the argument says which.</summary>
         </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.StartValve">
+            <summary>Starts the valve and the session log once, for the first tape or screenshot loop (on-demand tapes included).</summary>
+        </member>
         <member name="M:MindAttic.Capture.CaptureEngine.ScreenshotAsync(System.String,MindAttic.Capture.ScreenshotOptions)">
             <inheritdoc/>
         </member>
@@ -93,6 +96,13 @@
             Stops capture: finishes the active recording and pending exports, then (in session mode)
             hands the session export to the detached finalizer or runs it in-process.
             </summary>
+            <remarks>Every caller (the app, the shut-off valve) awaits the same shutdown, so a second call waits for the export too.</remarks>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.FinalizeSessionTapeAsync(MindAttic.Capture.Tape.CaptureTape,System.Double,System.Boolean)">
+            <summary>A session tape replaced mid-run (its encoder died): request and start its export.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.CaptureEngine.ExportSessionTapeAsync(MindAttic.Capture.Tape.CaptureTape,System.Boolean)">
+            <summary>Hands a stopped session tape to the detached finalizer, or exports it in-process.</summary>
         </member>
         <member name="T:MindAttic.Capture.CaptureNaming">
             <summary>Output naming: R:\MindAttic\Capture\{RepoName}\{RepoName}_{timestamp}.{ext}.</summary>
@@ -203,11 +213,11 @@
         <member name="T:MindAttic.Capture.CaptureLimits">
             <summary>
             Resource limits for the shut-off valve. Each is checked every <see cref="P:MindAttic.Capture.CaptureLimits.PollInterval"/>; the first one
-            crossed stops capture (recorded footage is exported, nothing is deleted). Null turns a limit off.
+            crossed stops capture (recorded footage is exported, nothing is deleted). Null or 0 turns a limit off.
             </summary>
         </member>
         <member name="P:MindAttic.Capture.CaptureLimits.Enabled">
-            <summary>Master switch for the valve (stats are still logged when off).</summary>
+            <summary>Master switch for the resource limits (stats are still logged, and <see cref="P:MindAttic.Capture.CaptureLimits.MaxDuration"/> still applies, when off).</summary>
         </member>
         <member name="P:MindAttic.Capture.CaptureLimits.PollInterval">
             <summary>How often resources are polled.</summary>
@@ -1235,6 +1245,9 @@
             <see cref="P:MindAttic.Capture.CaptureOptions.PostCapture"/> (config files the developer controls), never from events or the JS bridge.
             </summary>
         </member>
+        <member name="M:MindAttic.Capture.Output.PostCaptureRunner.Expand(System.String,MindAttic.Capture.CaptureResult,System.String)">
+            <summary>Fills the placeholders. An unquoted {path} is quoted, since output folders can contain spaces.</summary>
+        </member>
         <member name="T:MindAttic.Capture.ValveSample">
             <summary>One poll of the resources the valve watches. Null means "unknown on this platform".</summary>
         </member>
@@ -1299,6 +1312,12 @@
         <member name="M:MindAttic.Capture.Tape.CaptureTape.CurrentLag">
             <summary>How far finished segments trail the tape clock right now.</summary>
         </member>
+        <member name="M:MindAttic.Capture.Tape.CaptureTape.Sweep">
+            <summary>Timer callback: an exception escaping it would end the host process, and runs must not overlap.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Tape.CaptureTape.AbandonAsync">
+            <summary>A tape that failed to start: stop ffmpeg, the writer and the janitor without letting cleanup errors hide the original one.</summary>
+        </member>
         <member name="T:MindAttic.Capture.Tape.CaptureTape.FrameSink">
             <summary>Copies pushed frames into a bounded queue drained by a writer thread into ffmpeg's stdin.</summary>
         </member>
@@ -1310,6 +1329,9 @@
         </member>
         <member name="T:MindAttic.Capture.Tape.TapeState">
             <summary>Persisted next to the segments (tape.json) so a separate process can finalize or recover the session.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Tape.TapeState.OutputStem">
+            <summary>Where this tape's session export goes; null means <see cref="P:MindAttic.Capture.Tape.TapeState.SessionStem"/>. Tapes after an encoder restart get "_part2", "_part3"...</summary>
         </member>
         <member name="P:MindAttic.Capture.Tape.TapeState.OwnerPid">
             <summary>Owning process; recovery leaves tapes alone while it is still running.</summary>
@@ -1379,6 +1401,9 @@
         </member>
         <member name="M:MindAttic.Capture.Triggers.TriggerEngine.Process(MindAttic.Capture.Triggers.CaptureEvent)">
             <summary>Evaluates every rule against <paramref name="e"/>. Returns the number of rules that matched.</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Triggers.TriggerEngine.DebouncesSettled">
+            <summary>Completes once every debounced rule waiting to fire has fired (or been superseded).</summary>
         </member>
         <member name="T:MindAttic.Capture.Triggers.TriggerAction">
             <summary>What a trigger rule does when it fires.</summary>

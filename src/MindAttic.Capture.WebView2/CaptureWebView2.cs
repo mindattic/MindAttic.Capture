@@ -65,8 +65,10 @@ public static class CaptureWebView2
                 {
                     result = await DispatchAsync(options.Capture ?? Capture.Current, request);
                 }
-                catch (Exception ex) when (ex is ArgumentException or KeyNotFoundException or InvalidOperationException or FormatException)
+                catch (Exception ex)
                 {
+                    // This is an async void handler on the UI thread: anything escaping it would crash the app
+                    // (e.g. a capture cancelled because the engine shut down mid-request).
                     result = new { ok = false, error = ex.Message };
                 }
             }

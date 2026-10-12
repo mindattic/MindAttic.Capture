@@ -66,7 +66,7 @@ public static class AgentLocator
     /// <summary>Product name stamped on the agent exe; anything else called capture.exe is ignored.</summary>
     public const string ProductName = "MindAttic.Capture.Agent";
 
-    /// <summary>Where tools/install.ps1 puts the agent and MindAttic Browser.</summary>
+    /// <summary>Where tools/install.ps1 puts the agent.</summary>
     public static readonly string InstallDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MindAttic", "Capture", "bin");
 

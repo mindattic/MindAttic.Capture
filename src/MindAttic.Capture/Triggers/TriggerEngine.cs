@@ -64,6 +64,7 @@ internal sealed class TriggerEngine : ITriggerRegistry, IDisposable
 {
     private readonly object _gate = new();
     private readonly List<TriggerRule> _rules = [];
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Task, byte> _debouncing = new();
     private readonly List<CancellationTokenSource> _pollers = [];
     private readonly Action<TriggerRule, CaptureEvent> _fire;
     private readonly Action<string> _raise;
@@ -155,10 +156,12 @@ internal sealed class TriggerEngine : ITriggerRegistry, IDisposable
             if (rule.DebounceTime > TimeSpan.Zero)
             {
                 var version = Interlocked.Increment(ref rule.DebounceVersion);
-                _ = _delay(rule.DebounceTime).ContinueWith(_ =>
+                var waiting = _delay(rule.DebounceTime).ContinueWith(_ =>
                 {
                     if (Interlocked.Read(ref rule.DebounceVersion) == version) TryFire(rule, e);
                 }, TaskScheduler.Default);
+                _debouncing[waiting] = 0;
+                _ = waiting.ContinueWith(t => _debouncing.TryRemove(t, out _), TaskScheduler.Default);
             }
             else
             {
@@ -192,6 +195,9 @@ internal sealed class TriggerEngine : ITriggerRegistry, IDisposable
             _log.Error($"Rule {rule.EventPattern}/{rule.Action} failed to start.", ex);
         }
     }
+
+    /// <summary>Completes once every debounced rule waiting to fire has fired (or been superseded).</summary>
+    public Task DebouncesSettled() => Task.WhenAll(_debouncing.Keys.ToArray());
 
     public void Dispose()
     {

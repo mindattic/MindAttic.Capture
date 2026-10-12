@@ -19,11 +19,10 @@ hit", "battle complete") or recorded for a whole run with `-capture`.
 | `MindAttic.Capture.Windows` | net10.0-windows10.0.19041 | Desktop capture: Windows Graphics Capture for windows, Desktop Duplication / GDI for monitors and regions, WASAPI audio, global hotkeys, DI. |
 | `MindAttic.Capture.Wpf` | net10.0-windows10.0.19041 | `CaptureWpf.Init(this, e.Args)`: records the main window at native size, export on exit. |
 | `MindAttic.Capture.WebView2` | net10.0-windows10.0.19041 | `window.mindattic.capture` JavaScript bridge for any WebView2. |
-| `MindAttic.Browser.exe` | net10.0-windows10.0.19041 | A WebView2 browser for viewing, navigating and capturing any website or local site folder. |
 | `capture.exe` (agent) | net10.0-windows10.0.19041 | CLI and localhost API: record any app with no code changes, serve browser pages and scripts, finalize and recover sessions. |
 | `com.mindattic.capture` (Unity) | Unity 6, Windows | Game-view capture via GPU readback, game audio, Play Mode menu; reads `-capture` from the player command line. |
 
-Install the agent and browser once with `tools\install.ps1` (to `%LOCALAPPDATA%\MindAttic\Capture\bin`; add `-AddToPath` for `capture` everywhere). With the agent installed, apps hand their session export to it and exit immediately.
+Install the agent once with `tools\install.ps1` (to `%LOCALAPPDATA%\MindAttic\Capture\bin`; add `-AddToPath` for `capture` everywhere). With the agent installed, apps hand their session export to it and exit immediately.
 
 Video is encoded by **ffmpeg** (`choco install ffmpeg`, or put `ffmpeg.exe` next to the app). Hardware encoders (NVENC → QuickSync → AMF) are probed automatically, with a software fallback.
 
@@ -76,7 +75,7 @@ exactly as if the app had closed. The app keeps running, and nothing is deleted.
 | `maxEncoderLagSeconds` | 60 | the encoder is that far behind real time |
 | `maxDuration` | off | `-capture video 8h`, or `"maxDuration": "8h"` |
 
-Set a numeric limit to 0 to turn it off, or `"enabled": false` to turn the whole valve off.
+Set a limit to 0 to turn it off, or `"enabled": false` to turn off all the resource limits; a duration cap (`-capture video 8h` or `"maxDuration"`) still applies. Flags on the command line win over the config file.
 `pollEvery` changes the interval. Every poll is appended to `{RepoName}_{start}.stats.csv`. That
 file records free disk, available RAM, CPU, app and encoder memory, encoder lag, tape time,
 frames written and dropped, and the drive's write rate. The engine log goes to
@@ -100,7 +99,8 @@ then honor `-capture video` / `-capture screen 5`; in the editor use **MindAttic
 record Play Mode. Game code raises events with `CaptureUnity.Raise("battle-complete")`; rules go in
 `Assets/StreamingAssets/capture.json`.
 
-**Websites:** `MindAttic.Browser.exe <url | site folder> -capture video`. A folder is served at
+**Websites:** `MindAttic.Browser.exe <url | site folder> -capture video`, from its own repo,
+[MindAttic.Browser](https://github.com/mindattic/MindAttic.Browser). A folder is served at
 `https://<folder>.local/`, and its captures are named after the folder (`mindattic.com\mindattic.com_<timestamp>.mkv`)
 or, for generic folders like `dist` or `wwwroot`, after the repository. A URL's captures are named after its host. Pages (in the browser, any WebView2 with the bridge, or plain browsers
 with `capture serve`) call:

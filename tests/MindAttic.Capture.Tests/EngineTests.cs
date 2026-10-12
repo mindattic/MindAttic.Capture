@@ -258,6 +258,52 @@ public class EngineTests
     }
 
     [Test]
+    public async Task A_second_dispose_waits_for_the_valve_export()
+    {
+        var engine = await CaptureEngine.StartNewAsync(new SyntheticHost(), Options(o =>
+        {
+            o.SessionRecording = true;
+            o.Limits.MaxDuration = TimeSpan.FromSeconds(2);
+            o.Limits.PollInterval = TimeSpan.FromMilliseconds(500);
+        }));
+        var stem = Path.Combine(engine.SessionFolder, "Test_" + engine.SessionId);
+        var wait = Stopwatch.StartNew();
+        while (engine.Enabled && wait.Elapsed < TimeSpan.FromSeconds(30)) await Task.Delay(100);
+        Assert.That(engine.Enabled, Is.False, "the valve should have stopped capture");
+        // The app closing now must wait for the export the valve started, not return at once.
+        await engine.DisposeAsync();
+        Assert.That(File.Exists(stem + ".mkv") && File.Exists(stem + ".mp4"), Is.True);
+    }
+
+    [Test]
+    public async Task On_demand_recordings_are_watched_by_the_valve()
+    {
+        var engine = await CaptureEngine.StartNewAsync(new SyntheticHost(), Options(o =>
+        {
+            o.Limits.MaxDuration = TimeSpan.FromSeconds(2);
+            o.Limits.PollInterval = TimeSpan.FromMilliseconds(500);
+        }));
+        string? reason = null;
+        engine.LimitReached += r => reason = r;
+        await engine.StartRecordingAsync("forgotten", new RecordingOptions { Preset = CapturePreset.Lossless });
+        var wait = Stopwatch.StartNew();
+        while (engine.Enabled && wait.Elapsed < TimeSpan.FromSeconds(30)) await Task.Delay(100);
+        await engine.DisposeAsync();
+        Assert.That(reason, Does.Contain("maximum duration"));
+    }
+
+    [Test]
+    public async Task A_quick_second_toggle_stops_instead_of_starting_twice()
+    {
+        await using var engine = await CaptureEngine.StartNewAsync(new SyntheticHost(), Options());
+        var first = engine.ExecuteCommandAsync("toggle-recording"); // the tape is still starting
+        var second = engine.ExecuteCommandAsync("toggle-recording");
+        await Task.WhenAll(first, second);
+        Assert.That(engine.IsRecording, Is.False);
+        Assert.That((await second)?.Kind, Is.EqualTo(CaptureKind.Recording));
+    }
+
+    [Test]
     public async Task Session_is_exported_when_the_engine_closes()
     {
         string folder, session;

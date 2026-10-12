@@ -10,7 +10,7 @@ using MindAttic.Capture.Hosting;
 using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
-#if MINDATTIC_INPUT_SYSTEM
+#if MINDATTIC_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
 
@@ -29,12 +29,17 @@ namespace MindAttic.Capture.Unity
         private readonly ConcurrentQueue<(ScreenshotOptions Options, TaskCompletionSource<CapturedImage> Tcs)> _stills =
             new ConcurrentQueue<(ScreenshotOptions, TaskCompletionSource<CapturedImage>)>();
         private CaptureOptions _options;
+        private readonly object _engineGate = new object();
         private ICapture _engine;
+        private Task _startTask;
+        // Main thread only: screenshots waiting on a GPU readback, failed at quit because the readback callback needs
+        // the main thread that OnQuitting is blocking.
+        private readonly List<TaskCompletionSource<CapturedImage>> _readbackStills = new List<TaskCompletionSource<CapturedImage>>();
         private RenderTexture _grab, _flip;
         private volatile IFrameSink _sink;
         private int _tapeWidth, _tapeHeight, _screenWidth, _screenHeight, _inFlight;
         private byte[] _resizeBuffer;
-        private bool _quitting;
+        private volatile bool _quitting;
         private int _sampleRate, _channels;
         private GameAudioTrack _audio;
         private float _nextListenerCheck;
@@ -65,7 +70,7 @@ namespace MindAttic.Capture.Unity
             _screenWidth = Screen.width;
             _screenHeight = Screen.height;
             StartCoroutine(EndOfFrameLoop());
-            _ = StartEngineAsync();
+            _startTask = StartEngineAsync();
         }
 
         private async Task StartEngineAsync()
@@ -74,9 +79,22 @@ namespace MindAttic.Capture.Unity
             {
                 if (!SystemInfo.supportsAsyncGPUReadback)
                     throw new CaptureException(CaptureError.CaptureFailed, $"AsyncGPUReadback is not supported on {SystemInfo.graphicsDeviceType}.");
-                _engine = await CaptureEngine.StartNewAsync(this, _options);
+                // ConfigureAwait(false): OnQuitting blocks the main thread waiting on this task, so it must not need it.
+                var engine = await CaptureEngine.StartNewAsync(this, _options).ConfigureAwait(false);
+                bool quitting;
+                lock (_engineGate)
+                {
+                    quitting = _quitting;
+                    if (!quitting) _engine = engine;
+                }
+                if (quitting)
+                {
+                    // The game quit while ffmpeg was starting: shut the engine down here so nothing is left running.
+                    await engine.DisposeAsync().ConfigureAwait(false);
+                    return;
+                }
                 if (_options.SessionRecording)
-                    UnityEngine.Debug.Log($"[MindAttic.Capture] Recording {_tapeWidth}x{_tapeHeight} to {_engine.SessionFolder}");
+                    UnityEngine.Debug.Log($"[MindAttic.Capture] Recording {_tapeWidth}x{_tapeHeight} to {engine.SessionFolder}");
             }
             catch (Exception ex)
             {
@@ -88,9 +106,12 @@ namespace MindAttic.Capture.Unity
 
         public ValueTask<CapturedImage> CaptureStillAsync(ScreenshotOptions options, CancellationToken ct)
         {
-            if (_quitting) return new ValueTask<CapturedImage>(Task.FromException<CapturedImage>(new CaptureException(CaptureError.CaptureFailed, "The game is shutting down.")));
+            if (_quitting) return new ValueTask<CapturedImage>(Task.FromException<CapturedImage>(ShuttingDown()));
             var tcs = new TaskCompletionSource<CapturedImage>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (ct.CanBeCanceled) ct.Register(() => tcs.TrySetCanceled());
             _stills.Enqueue((options, tcs));
+            // OnQuitting may have drained the queue between the check above and the enqueue.
+            if (_quitting) tcs.TrySetException(ShuttingDown());
             return new ValueTask<CapturedImage>(tcs.Task);
         }
 
@@ -166,19 +187,22 @@ namespace MindAttic.Capture.Unity
 
         private void GrabFrame()
         {
+            // A zero-size view (minimized window, collapsed Game view) has nothing to grab; leave screenshots queued.
+            var w = Screen.width;
+            var h = Screen.height;
+            if (w <= 0 || h <= 0) return;
+
             var sink = _sink;
             var stills = new List<(ScreenshotOptions, TaskCompletionSource<CapturedImage>)>();
             while (_stills.TryDequeue(out var s))
             {
+                if (s.Tcs.Task.IsCompleted) continue;
                 if (s.Options.Supersample > 1) CaptureSupersampled(s.Options.Supersample, s.Tcs);
                 else stills.Add(s);
             }
             var wantVideo = sink != null && _inFlight < MaxFramesInFlight;
             if (!wantVideo && stills.Count == 0) return;
 
-            var w = Screen.width;
-            var h = Screen.height;
-            if (w <= 0 || h <= 0) return;
             EnsureTargets(w, h);
             ScreenCapture.CaptureScreenshotIntoRenderTexture(_grab);
             // Readback rows start at the texture's first row. Where UVs start at the top (D3D, Vulkan, Metal) that is
@@ -190,12 +214,14 @@ namespace MindAttic.Capture.Unity
                 source = _flip;
             }
             _inFlight++;
+            foreach (var s in stills) _readbackStills.Add(s.Item2);
             AsyncGPUReadback.Request(source, 0, TextureFormat.BGRA32, request => OnReadback(request, w, h, wantVideo ? sink : null, stills));
         }
 
         private void OnReadback(AsyncGPUReadbackRequest request, int w, int h, IFrameSink sink, List<(ScreenshotOptions Options, TaskCompletionSource<CapturedImage> Tcs)> stills)
         {
             _inFlight--;
+            foreach (var s in stills) _readbackStills.Remove(s.Tcs);
             if (request.hasError)
             {
                 foreach (var s in stills) s.Tcs.TrySetException(new CaptureException(CaptureError.CaptureFailed, "GPU readback failed."));
@@ -286,19 +312,27 @@ namespace MindAttic.Capture.Unity
 
         private void OnQuitting()
         {
-            if (_quitting) return;
-            _quitting = true;
+            ICapture engine;
+            lock (_engineGate)
+            {
+                if (_quitting) return;
+                _quitting = true;
+                engine = _engine;
+                _engine = null;
+            }
             _sink = null;
-            while (_stills.TryDequeue(out var s)) s.Tcs.TrySetException(new CaptureException(CaptureError.CaptureFailed, "The game is shutting down."));
-            var engine = _engine;
-            _engine = null;
-            if (engine == null) return;
+            while (_stills.TryDequeue(out var s)) s.Tcs.TrySetException(ShuttingDown());
+            foreach (var tcs in _readbackStills) tcs.TrySetException(ShuttingDown());
+            _readbackStills.Clear();
+            // Still starting: StartEngineAsync sees _quitting and disposes the engine itself, so wait for that.
+            var shutdown = engine != null ? Task.Run(() => engine.DisposeAsync().AsTask()) : _startTask;
+            if (shutdown == null || shutdown.IsCompleted) return;
             var sw = Stopwatch.StartNew();
             try
             {
                 // The engine never needs the main thread to finish; with capture.exe installed the session export
                 // runs after exit, otherwise it runs here before the game closes.
-                if (!Task.Run(() => engine.DisposeAsync().AsTask()).Wait(TimeSpan.FromMinutes(15)))
+                if (!shutdown.Wait(TimeSpan.FromMinutes(15)))
                     UnityEngine.Debug.LogWarning("[MindAttic.Capture] Capture did not finish shutting down within 15 minutes.");
             }
             catch (AggregateException ex)
@@ -307,6 +341,9 @@ namespace MindAttic.Capture.Unity
             }
             _options.Log.Log(CaptureLogLevel.Info, $"Capture stopped in {sw.Elapsed.TotalSeconds:0.0}s.");
         }
+
+        private static CaptureException ShuttingDown() =>
+            new CaptureException(CaptureError.CaptureFailed, "The game is shutting down.");
 
         private void OnDestroy()
         {
@@ -441,7 +478,7 @@ namespace MindAttic.Capture.Unity
         private readonly struct HotkeyBinding
         {
             private readonly bool _ctrl, _shift, _alt;
-#if MINDATTIC_INPUT_SYSTEM
+#if MINDATTIC_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
             private readonly Key _key;
             private HotkeyBinding(Key key, bool ctrl, bool shift, bool alt) { _key = key; _ctrl = ctrl; _shift = shift; _alt = alt; }
 #else
@@ -466,19 +503,19 @@ namespace MindAttic.Capture.Unity
                 }
                 var name = parts[parts.Length - 1].Trim();
                 if (name.Length == 1 && char.IsDigit(name[0])) name = (
-#if MINDATTIC_INPUT_SYSTEM
+#if MINDATTIC_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
                     "Digit"
 #else
                     "Alpha"
 #endif
                     ) + name;
                 if (string.Equals(name, "PrintScreen", StringComparison.OrdinalIgnoreCase)) name =
-#if MINDATTIC_INPUT_SYSTEM
+#if MINDATTIC_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
                     "PrintScreen";
 #else
                     "Print";
 #endif
-#if MINDATTIC_INPUT_SYSTEM
+#if MINDATTIC_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
                 if (!Enum.TryParse(name, true, out Key key) || key == Key.None) return false;
 #else
                 if (!Enum.TryParse(name, true, out KeyCode key) || key == KeyCode.None) return false;
@@ -489,7 +526,7 @@ namespace MindAttic.Capture.Unity
 
             public bool WasPressed()
             {
-#if MINDATTIC_INPUT_SYSTEM
+#if MINDATTIC_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
                 var kb = Keyboard.current;
                 if (kb == null || !kb[_key].wasPressedThisFrame) return false;
                 return (!_ctrl || kb.ctrlKey.isPressed) && (!_shift || kb.shiftKey.isPressed) && (!_alt || kb.altKey.isPressed);

@@ -90,12 +90,13 @@ public sealed class CaptureOptions
     /// <summary>Applies parsed command-line flags (and the environment).</summary>
     public CaptureOptions Apply(CaptureArgs args)
     {
+        // The config file first, so flags typed on this command line win over it.
+        if (args.ConfigPath is { } path) ApplyConfigFile(path);
         if (args.KillSwitch) Enabled = false;
         if (args.Video) SessionRecording = true;
         if (args.ScreenInterval is { } interval) ScreenshotInterval = interval;
         if (args.Quality is { } q) TapeQuality = q;
         if (args.MaxDuration is { } max) Limits.MaxDuration = max;
-        if (args.ConfigPath is { } path) ApplyConfigFile(path);
         return this;
     }
 
@@ -160,11 +161,11 @@ public sealed class CaptureOptions
 
 /// <summary>
 /// Resource limits for the shut-off valve. Each is checked every <see cref="PollInterval"/>; the first one
-/// crossed stops capture (recorded footage is exported, nothing is deleted). Null turns a limit off.
+/// crossed stops capture (recorded footage is exported, nothing is deleted). Null or 0 turns a limit off.
 /// </summary>
 public sealed class CaptureLimits
 {
-    /// <summary>Master switch for the valve (stats are still logged when off).</summary>
+    /// <summary>Master switch for the resource limits (stats are still logged, and <see cref="MaxDuration"/> still applies, when off).</summary>
     public bool Enabled { get; set; } = true;
     /// <summary>How often resources are polled.</summary>
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(5);
@@ -187,15 +188,19 @@ public sealed class CaptureLimits
         if (c.MinFreeMemoryMB is { } mem) MinFreeMemoryMB = mem <= 0 ? null : mem;
         if (c.MaxEncoderMemoryMB is { } enc) MaxEncoderMemoryMB = enc <= 0 ? null : enc;
         if (c.MaxEncoderLagSeconds is { } lag) MaxEncoderLagSeconds = lag <= 0 ? null : lag;
-        if (!string.IsNullOrWhiteSpace(c.MaxDuration)) MaxDuration = DurationText.Parse(c.MaxDuration!);
+        if (!string.IsNullOrWhiteSpace(c.MaxDuration))
+        {
+            var max = DurationText.Parse(c.MaxDuration!);
+            MaxDuration = max <= TimeSpan.Zero ? null : max;
+        }
     }
 
     internal void Validate()
     {
         if (PollInterval < TimeSpan.FromMilliseconds(250) || PollInterval > TimeSpan.FromMinutes(5))
             throw new CaptureException(CaptureError.InvalidArgument, $"Limits.PollInterval {PollInterval} is out of range (250ms-5m).");
-        if (MaxDuration is { } d && d <= TimeSpan.Zero)
-            throw new CaptureException(CaptureError.InvalidArgument, $"Limits.MaxDuration {d} must be positive.");
+        if (MaxDuration is { } d && d < TimeSpan.Zero)
+            throw new CaptureException(CaptureError.InvalidArgument, $"Limits.MaxDuration {d} must not be negative.");
     }
 }
 

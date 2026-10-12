@@ -74,7 +74,10 @@ public static class CaptureWpf
 /// <summary>The capture started by <see cref="CaptureWpf.Init"/>.</summary>
 public sealed class WpfCapture
 {
+    private readonly object _gate = new();
     private WindowsCaptureSession? _session;
+    private Task? _start;
+    private bool _stopping;
     private readonly TaskCompletionSource<ICapture> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>Effective options (null if setup failed).</summary>
@@ -86,12 +89,27 @@ public sealed class WpfCapture
     /// <summary>Completes when capture is running.</summary>
     public Task<ICapture> Ready => _ready.Task;
 
-    internal async Task StartAsync(ICaptureHost host, CaptureOptions options)
+    internal Task StartAsync(ICaptureHost host, CaptureOptions options) => _start = StartCoreAsync(host, options);
+
+    private async Task StartCoreAsync(ICaptureHost host, CaptureOptions options)
     {
         try
         {
-            _session = await DesktopCapture.StartAsync(host, options).ConfigureAwait(false);
-            _ready.TrySetResult(_session.Engine);
+            var session = await DesktopCapture.StartAsync(host, options).ConfigureAwait(false);
+            bool stopping;
+            lock (_gate)
+            {
+                stopping = _stopping;
+                if (!stopping) _session = session;
+            }
+            if (stopping)
+            {
+                // The app exited while capture was starting: shut down what just started so ffmpeg isn't orphaned.
+                await session.DisposeAsync().ConfigureAwait(false);
+                _ready.TrySetCanceled();
+                return;
+            }
+            _ready.TrySetResult(session.Engine);
         }
         catch (Exception ex)
         {
@@ -103,12 +121,20 @@ public sealed class WpfCapture
     /// <summary>Stops capture on the UI thread during Application.Exit (the engine never needs the UI thread to finish).</summary>
     internal void StopBlocking()
     {
-        var session = _session;
-        if (session is null) return;
-        _session = null;
+        WindowsCaptureSession? session;
+        lock (_gate)
+        {
+            if (_stopping) return;
+            _stopping = true;
+            session = _session;
+            _session = null;
+        }
+        // Still starting: StartCoreAsync sees _stopping and disposes the session itself, so wait for that.
+        var shutdown = session is not null ? Task.Run(() => session.DisposeAsync().AsTask()) : _start;
+        if (shutdown is null) return;
         try
         {
-            Task.Run(() => session.DisposeAsync().AsTask()).GetAwaiter().GetResult();
+            shutdown.GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using MindAttic.Capture.Hosting;
+using MindAttic.Capture.Internal;
 
 namespace MindAttic.Capture.Output;
 
@@ -21,10 +22,16 @@ internal static class PostCaptureRunner
                 try
                 {
                     var windows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-                    var psi = new ProcessStartInfo(windows ? "cmd.exe" : "/bin/sh", windows ? "/d /c " + command : "-c \"" + command.Replace("\"", "\\\"") + "\"")
-                    {
-                        UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true,
-                    };
+                    // cmd /s /c "<command>": cmd strips exactly the outer pair, so a command with its own quotes
+                    // ("C:\Program Files\tool.exe" "{path}") reaches it intact. sh gets the command as one argument.
+                    var psi = windows
+                        ? new ProcessStartInfo("cmd.exe", "/d /s /c \"" + command + "\"")
+                        : new ProcessStartInfo("/bin/sh");
+                    if (!windows) psi.AddArguments(["-c", command]);
+                    psi.UseShellExecute = false;
+                    psi.CreateNoWindow = true;
+                    psi.RedirectStandardError = true;
+                    psi.RedirectStandardOutput = true;
                     using var p = Process.Start(psi)!;
                     var stderr = p.StandardError.ReadToEndAsync();
                     await p.StandardOutput.ReadToEndAsync().ConfigureAwait(false);
@@ -45,8 +52,11 @@ internal static class PostCaptureRunner
         string.Equals(on, r.Tag, StringComparison.OrdinalIgnoreCase) ||
         (r.Trigger is not null && string.Equals(on, r.Trigger, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Fills the placeholders. An unquoted {path} is quoted, since output folders can contain spaces.</summary>
     internal static string Expand(string template, CaptureResult r, string session) => template
-        .Replace("{path}", r.PrimaryFile ?? "")
+        .Replace("\"{path}\"", "\"" + (r.PrimaryFile ?? "") + "\"")
+        .Replace("'{path}'", "'" + (r.PrimaryFile ?? "") + "'")
+        .Replace("{path}", "\"" + (r.PrimaryFile ?? "") + "\"")
         .Replace("{tag}", OutputManager.SanitizeTag(r.Tag))
         .Replace("{kind}", r.Kind.ToString().ToLowerInvariant())
         .Replace("{session}", session);

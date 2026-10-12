@@ -15,6 +15,8 @@ internal sealed class TapeState
     public string SessionId { get; set; } = "";
     public string SessionDir { get; set; } = "";
     public string SessionStem { get; set; } = "";
+    /// <summary>Where this tape's session export goes; null means <see cref="SessionStem"/>. Tapes after an encoder restart get "_part2", "_part3"...</summary>
+    public string? OutputStem { get; set; }
     public string FfmpegPath { get; set; } = "";
     public DateTimeOffset CreatedAt { get; set; }
     public int Fps { get; set; }

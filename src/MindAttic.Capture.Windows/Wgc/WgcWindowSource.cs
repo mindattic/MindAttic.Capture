@@ -25,6 +25,7 @@ public sealed class WgcWindowSource : PushVideoSource
     private readonly int _width, _height;
     private readonly byte[] _latest;
     private readonly object _frameGate = new();
+    private readonly object _d3dGate = new();
     private ID3D11Device? _device;
     private ID3D11Texture2D? _staging;
     private Direct3D11CaptureFramePool? _pool;
@@ -42,8 +43,9 @@ public sealed class WgcWindowSource : PushVideoSource
         _fps = fps;
         _drawMouse = drawMouse;
         _item = CreateItemForWindow(hwnd);
-        _width = Math.Max(2, _item.Size.Width);
-        _height = Math.Max(2, _item.Size.Height);
+        // Even sizes: HQ tapes encode yuv420p straight from these frames, which rejects odd widths and heights.
+        _width = Math.Max(2, _item.Size.Width & ~1);
+        _height = Math.Max(2, _item.Size.Height & ~1);
         _latest = new byte[_width * _height * 4];
     }
 
@@ -94,6 +96,16 @@ public sealed class WgcWindowSource : PushVideoSource
     }
 
     private void OnFrameArrived(Direct3D11CaptureFramePool sender, object args)
+    {
+        // Held for the whole copy so StopAsync can't release the device or staging texture mid-Map.
+        lock (_d3dGate)
+        {
+            if (!_running || _device is null) return;
+            CopyFrame(sender);
+        }
+    }
+
+    private void CopyFrame(Direct3D11CaptureFramePool sender)
     {
         using var frame = sender.TryGetNextFrame();
         if (frame is null || _device is null) return;
@@ -185,14 +197,18 @@ public sealed class WgcWindowSource : PushVideoSource
     {
         _running = false;
         _pump?.Join(TimeSpan.FromSeconds(2));
+        if (_pool is { } pool) pool.FrameArrived -= OnFrameArrived;
         _session?.Dispose();
         _pool?.Dispose();
-        _staging?.Dispose();
-        _device?.Dispose();
         _session = null;
         _pool = null;
-        _staging = null;
-        _device = null;
+        lock (_d3dGate)
+        {
+            _staging?.Dispose();
+            _device?.Dispose();
+            _staging = null;
+            _device = null;
+        }
         return Task.CompletedTask;
     }
 
