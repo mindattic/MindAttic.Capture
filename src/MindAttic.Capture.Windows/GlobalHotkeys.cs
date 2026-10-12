@@ -11,6 +11,7 @@ public sealed class GlobalHotkeys : IDisposable
 {
     private const int WM_HOTKEY = 0x0312;
     private const int WM_QUIT = 0x0012;
+    private const uint PM_NOREMOVE = 0;
     private const uint MOD_ALT = 1, MOD_CONTROL = 2, MOD_SHIFT = 4, MOD_WIN = 8, MOD_NOREPEAT = 0x4000;
 
     private readonly Thread _thread;
@@ -35,6 +36,10 @@ public sealed class GlobalHotkeys : IDisposable
                 if (RegisterHotKey(0, i + 1, parsed[i].Mods | MOD_NOREPEAT, parsed[i].Vk)) ids[i + 1] = parsed[i].Command;
                 else log.Log(CaptureLogLevel.Warning, $"Hotkey {parsed[i].Key} is already in use by another app; ignored.");
             }
+            // A thread's message queue is created by its first user32 call; when every binding fails to
+            // parse, that loop never runs one. Force it here so Dispose()'s PostThreadMessage can't race
+            // ahead of GetMessage below and get silently dropped, leaking this thread forever.
+            PeekMessage(out _, 0, 0, 0, PM_NOREMOVE);
             _ready.TrySetResult(true);
             while (GetMessage(out var msg, 0, 0, 0) > 0)
             {
@@ -106,6 +111,7 @@ public sealed class GlobalHotkeys : IDisposable
     [DllImport("user32.dll")] private static extern bool RegisterHotKey(nint hwnd, int id, uint modifiers, uint vk);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(nint hwnd, int id);
     [DllImport("user32.dll")] private static extern int GetMessage(out MSG msg, nint hwnd, uint min, uint max);
+    [DllImport("user32.dll")] private static extern bool PeekMessage(out MSG msg, nint hwnd, uint min, uint max, uint remove);
     [DllImport("user32.dll")] private static extern bool PostThreadMessage(uint threadId, uint msg, nuint wParam, nint lParam);
     [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
 }

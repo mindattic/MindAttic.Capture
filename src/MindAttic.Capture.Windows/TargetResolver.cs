@@ -50,9 +50,11 @@ internal static class TargetResolver
     {
         var desktop = monitors.Aggregate(default(PixelRect), (acc, m) => acc.Union(m.Bounds));
         var clipped = rect.Intersect(desktop);
-        if (clipped.IsEmpty)
+        // Check emptiness after forcing even dimensions: a 1px-wide/tall clip isn't empty until rounded down.
+        var even = clipped with { Width = clipped.Width & ~1, Height = clipped.Height & ~1 };
+        if (even.IsEmpty)
             throw new CaptureException(CaptureError.TargetNotFound, $"{rect} is entirely off screen.");
-        return clipped with { Width = clipped.Width & ~1, Height = clipped.Height & ~1 };
+        return even;
     }
 
     private static ResolvedTarget FromWindow(nint hwnd, string label)

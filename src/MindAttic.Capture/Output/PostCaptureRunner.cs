@@ -11,6 +11,8 @@ namespace MindAttic.Capture.Output;
 /// </summary>
 internal static class PostCaptureRunner
 {
+    private static readonly TimeSpan CommandTimeout = TimeSpan.FromMinutes(5);
+
     public static void Run(IReadOnlyList<PostCaptureConfig> configs, CaptureResult result, string session, ICaptureLog log)
     {
         foreach (var c in configs)
@@ -34,9 +36,25 @@ internal static class PostCaptureRunner
                     psi.RedirectStandardOutput = true;
                     using var p = Process.Start(psi)!;
                     var stderr = p.StandardError.ReadToEndAsync();
-                    await p.StandardOutput.ReadToEndAsync().ConfigureAwait(false);
-                    p.WaitForExit();
-                    if (p.ExitCode != 0) log.Warn($"Post-capture command exited with {p.ExitCode}: {command}{Environment.NewLine}{await stderr.ConfigureAwait(false)}");
+                    var stdout = p.StandardOutput.ReadToEndAsync();
+                    if (!await p.WaitForProcessExitAsync(CommandTimeout).ConfigureAwait(false))
+                    {
+                        log.Warn($"Post-capture command did not finish within {CommandTimeout.TotalMinutes:0} minute(s); killing it: {command}");
+                        try
+                        {
+#if NET
+                            p.Kill(entireProcessTree: true);
+#else
+                            p.Kill();
+#endif
+                        }
+                        catch (InvalidOperationException) { }
+                        await p.WaitForProcessExitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                    }
+                    // A surviving child can hold stdout/stderr open after the process itself exits; don't hang on EOF.
+                    await Task.WhenAll(stdout, stderr).CompletesWithin(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                    if (p.HasExited && p.ExitCode != 0)
+                        log.Warn($"Post-capture command exited with {p.ExitCode}: {command}{Environment.NewLine}{(stderr.IsCompletedSuccessfully ? stderr.Result : "")}");
                 }
                 catch (Exception ex)
                 {

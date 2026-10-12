@@ -36,7 +36,9 @@ public sealed class WasapiTrack : IAudioTrackCapture
     public static WasapiTrack Microphone()
     {
         using var enumerator = new MMDeviceEnumerator();
-        var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
+        // WasapiCapture only pulls an IAudioClient out of the device during construction; it doesn't
+        // keep or dispose the MMDevice itself, so it's safe (and necessary) to dispose it here.
+        using var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
         return new WasapiTrack("mic", new WasapiCapture(device));
     }
 

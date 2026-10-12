@@ -58,7 +58,7 @@ public static class Desktop
             using var p = System.Diagnostics.Process.GetProcessById(pid);
             return p.ProcessName;
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             return "";
         }

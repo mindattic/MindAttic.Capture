@@ -191,6 +191,7 @@ internal sealed class FfmpegProcess : IAsyncDisposable
     {
         if (!_process.HasExited && timeout > TimeSpan.Zero)
         {
+            var budget = Stopwatch.StartNew();
             var signal = Task.Run(async () =>
             {
                 try
@@ -211,9 +212,11 @@ internal sealed class FfmpegProcess : IAsyncDisposable
                     // Pipe already closed: ffmpeg is exiting on its own.
                 }
             });
-            // Closing a full pipe blocks until ffmpeg reads; the exit wait below bounds that too.
+            // Closing a full pipe blocks until ffmpeg reads; the exit wait below shares the same budget
+            // instead of getting a fresh timeout, so the two together never exceed it.
             await signal.CompletesWithin(timeout).ConfigureAwait(false);
-            await _process.WaitForProcessExitAsync(timeout).ConfigureAwait(false);
+            var remaining = timeout - budget.Elapsed;
+            if (remaining > TimeSpan.Zero) await _process.WaitForProcessExitAsync(remaining).ConfigureAwait(false);
         }
         if (!_process.HasExited) Kill();
         // After a kill, wait for the process itself, not for EOF on its output pipes: a grandchild can hold those open.

@@ -17,7 +17,7 @@ internal sealed record ValveSample(
 /// each minute, appends every sample to {session}.stats.csv, and closes (stops capture) when a
 /// <see cref="CaptureLimits"/> limit is crossed.
 /// </summary>
-internal sealed class ResourceValve
+internal sealed class ResourceValve : IDisposable
 {
     private static readonly TimeSpan StatusEvery = TimeSpan.FromMinutes(1);
     private readonly CaptureLimits _limits;
@@ -193,4 +193,6 @@ internal sealed class ResourceValve
         if (_limits.MaxDuration is { } t && t > TimeSpan.Zero) parts.Add($"duration <= {t}");
         return parts.Count == 0 ? "none" : string.Join(", ", parts);
     }
+
+    public void Dispose() => _self.Dispose();
 }

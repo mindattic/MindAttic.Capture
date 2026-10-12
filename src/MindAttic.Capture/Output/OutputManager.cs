@@ -304,21 +304,28 @@ internal sealed class OutputManager
     private void TrackBytes(string file)
     {
         if (_options.DiskWarnGB is not { } limit) return;
+        double totalGb;
+        bool shouldWarn;
         try
         {
-            Interlocked.Add(ref _bytesWritten, new FileInfo(file).Length);
-            if (Interlocked.Read(ref _baselineBytes) < 0)
-                Interlocked.Exchange(ref _baselineBytes, DirectorySize(Path.Combine(Root, Sanitize(_options.AppName))) - Interlocked.Read(ref _bytesWritten));
-            var totalGb = (Interlocked.Read(ref _baselineBytes) + Interlocked.Read(ref _bytesWritten)) / 1e9;
-            if (totalGb > limit && !_diskWarned)
+            lock (_gate)
             {
-                _diskWarned = true;
-                _log.Warn($"Captures for {_options.AppName} use {totalGb:0.0} GB (warning threshold {limit:0.#} GB). Nothing is deleted automatically.");
-                DiskWarning?.Invoke(totalGb);
+                _bytesWritten += new FileInfo(file).Length;
+                if (_baselineBytes < 0)
+                    _baselineBytes = DirectorySize(Path.Combine(Root, Sanitize(_options.AppName))) - _bytesWritten;
+                totalGb = (_baselineBytes + _bytesWritten) / 1e9;
+                shouldWarn = totalGb > limit && !_diskWarned;
+                if (shouldWarn) _diskWarned = true;
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            return;
+        }
+        if (shouldWarn)
+        {
+            _log.Warn($"Captures for {_options.AppName} use {totalGb:0.0} GB (warning threshold {limit:0.#} GB). Nothing is deleted automatically.");
+            DiskWarning?.Invoke(totalGb);
         }
     }
 

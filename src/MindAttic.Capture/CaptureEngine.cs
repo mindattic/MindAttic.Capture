@@ -55,6 +55,9 @@ public sealed class CaptureEngine : ICapture
     private DateTimeOffset _recStartedAt;
     private readonly List<(double Start, double? End)> _recRanges = [];
     private int _recLease = -1;
+    // The tape a recording's ranges are offsets into. The engine's current tape (_tape) can be replaced
+    // mid-recording if its encoder dies; without this, Pause/Resume/Stop would cut the wrong tape's footage.
+    private CaptureTape? _recTape;
 
     /// <summary>Creates an engine; call <see cref="StartAsync"/> (or use <see cref="StartNewAsync"/>).</summary>
     public CaptureEngine(ICaptureHost host, CaptureOptions options)
@@ -105,8 +108,17 @@ public sealed class CaptureEngine : ICapture
     public async Task StartAsync(CancellationToken ct = default)
     {
         if (Interlocked.Exchange(ref _started, 1) != 0) return;
-        _options.Validate();
-        foreach (var rule in _options.Rules) _triggers.Add(TriggerRule.FromConfig(rule));
+        try
+        {
+            _options.Validate();
+            foreach (var rule in _options.Rules) _triggers.Add(TriggerRule.FromConfig(rule));
+        }
+        catch
+        {
+            // Nothing started (no event worker, no tape); let a retry on this instance try again.
+            Volatile.Write(ref _started, 0);
+            throw;
+        }
         _eventWorker = Task.Run(ProcessEventsAsync);
         if (!_options.Enabled)
         {
@@ -202,7 +214,7 @@ public sealed class CaptureEngine : ICapture
             _output.WriteSidecar(file, Sidecar(result, Merge(eventData, options.Data), image.Width, image.Height, null, null, [], null, null));
             return Complete(result);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
             return Complete(Failed(CaptureKind.Screenshot, tag, at, trigger, ex));
         }
@@ -307,6 +319,7 @@ public sealed class CaptureEngine : ICapture
         lock (_recGate)
         {
             _recTag = tag;
+            _recTape = tape;
             _recOptions = options;
             _recStartedAt = DateTimeOffset.Now;
             _recRanges.Clear();
@@ -322,9 +335,9 @@ public sealed class CaptureEngine : ICapture
     {
         lock (_recGate)
         {
-            if (_recTag is null || _tape is null || _recRanges.Count == 0 || _recRanges[_recRanges.Count - 1].End is not null) return;
+            if (_recTag is null || _recTape is null || _recRanges.Count == 0 || _recRanges[_recRanges.Count - 1].End is not null) return;
             var last = _recRanges[_recRanges.Count - 1];
-            _recRanges[_recRanges.Count - 1] = (last.Start, _tape.Now);
+            _recRanges[_recRanges.Count - 1] = (last.Start, _recTape.Now);
         }
     }
 
@@ -333,8 +346,8 @@ public sealed class CaptureEngine : ICapture
     {
         lock (_recGate)
         {
-            if (_recTag is null || _tape is null || _recRanges.Count == 0 || _recRanges[_recRanges.Count - 1].End is null) return;
-            _recRanges.Add((_tape.Now, null));
+            if (_recTag is null || _recTape is null || _recRanges.Count == 0 || _recRanges[_recRanges.Count - 1].End is null) return;
+            _recRanges.Add((_recTape.Now, null));
         }
     }
 
@@ -348,12 +361,13 @@ public sealed class CaptureEngine : ICapture
         DateTimeOffset startedAt;
         List<(double, double)> ranges;
         int lease;
+        CaptureTape? tape;
         Task? starting;
         lock (_recGate) starting = _recStart;
         if (starting is not null) await starting.ConfigureAwait(false);
-        var tape = _tape;
         lock (_recGate)
         {
+            tape = _recTape;
             if (_recTag is null || tape is null) return CaptureResult.Skip(CaptureKind.Recording, "", "Not recording.");
             tag = _recTag;
             options = _recOptions;
@@ -362,6 +376,7 @@ public sealed class CaptureEngine : ICapture
             ranges = _recRanges.Select(r => (r.Start, r.End ?? now)).Where(r => r.Item2 > r.Item1).ToList();
             lease = _recLease;
             _recTag = null;
+            _recTape = null;
             _recRanges.Clear();
             _recLease = -1;
         }
@@ -393,8 +408,11 @@ public sealed class CaptureEngine : ICapture
         var t = anchor ?? tape.Now;
         var start = Math.Max(0, t - before.TotalSeconds);
         var end = t + after.TotalSeconds;
-        if (kind == CaptureKind.Replay && before > TimeSpan.Zero && !_options.ReplayArmed && !_options.SessionRecording && t - before.TotalSeconds < 0)
-            WarnOnce("SaveReplay asked for past footage but the replay buffer is not armed (ReplayArmed); only footage since the tape started is available.");
+        // Footage before this floor is already swept by retention (or never kept, without ReplayArmed/a covering
+        // rule); comparing against the tape's total runtime alone misses that and silently exports less than asked.
+        if (kind == CaptureKind.Replay && before > TimeSpan.Zero && start < KeepFrom())
+            WarnOnce($"SaveReplay asked for footage starting at {start:0.0}s, but only footage from about {KeepFrom():0.0}s onward is retained; " +
+                     "arm ReplayArmed (or add a trigger rule covering this much) to keep more.");
         var lease = Lease(start);
         try
         {
@@ -438,7 +456,7 @@ public sealed class CaptureEngine : ICapture
             lock (Diagnostics) Diagnostics.Videos++;
             return Complete(result);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException || !_shutdown.IsCancellationRequested)
+        catch (Exception ex)
         {
             return Complete(Failed(kind, tag, at, trigger, ex));
         }
@@ -566,7 +584,14 @@ public sealed class CaptureEngine : ICapture
     {
         var tape = _tape;
         if (tape is { IsRunning: true }) return tape;
-        await _tapeGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await _tapeGate.WaitAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
         try
         {
             if (_tape is { IsRunning: true }) return _tape;
@@ -606,7 +631,7 @@ public sealed class CaptureEngine : ICapture
             StartValve();
             return started;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
             _log.Error("Could not start the capture tape.", ex);
             lock (Diagnostics) Diagnostics.Failures++;
@@ -761,6 +786,22 @@ public sealed class CaptureEngine : ICapture
         // Events raised just before shutdown still run their rules; drain them before waiting on captures.
         _drain.Cancel();
         if (_eventWorker is not null) await _eventWorker.CompletesWithin(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        // The worker can race a concurrent Raise() right at cancellation and exit just before it enqueues;
+        // catch anything left over here instead of losing it.
+        while (_events.TryDequeue(out var leftover))
+        {
+            var e = leftover.Event;
+            lock (Diagnostics) Diagnostics.EventsRaised++;
+            _output.AddEvent(new ManifestEvent { Name = e.Name, At = e.Timestamp, TapeSeconds = e.TapeSeconds, Data = e.Data });
+            try
+            {
+                _triggers.Process(e);
+            }
+            catch (Exception ex)
+            {
+                _log.Error($"Trigger processing for \"{e.Name}\" failed.", ex);
+            }
+        }
         if (_intervalLoop is not null) await _intervalLoop.CompletesWithin(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         await _triggers.DebouncesSettled().CompletesWithin(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
 
@@ -799,6 +840,7 @@ public sealed class CaptureEngine : ICapture
             Diagnostics.MinAvailableMemoryMB = valve.MinAvailableMemoryMB;
             Diagnostics.MaxEncoderMemoryMB = valve.MaxEncoderMemoryMB;
             Diagnostics.MaxCpuPercent = valve.MaxCpuPercent;
+            valve.Dispose();
         }
         _output.Manifest.Ended = DateTimeOffset.Now;
         _output.Manifest.Diagnostics = Diagnostics.ToDictionary();

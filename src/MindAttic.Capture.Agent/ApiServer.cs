@@ -17,6 +17,8 @@ namespace MindAttic.Capture.Agent;
 internal sealed class ApiServer : IAsyncDisposable
 {
     public const int DefaultPort = 47800;
+    private const int MaxBodyBytes = 1 << 20; // Capture payloads are small key/value bags; this is generous.
+    private const int MaxWebSocketMessageBytes = 1 << 20;
     public static readonly string InfoFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MindAttic", "Capture", "agent.json");
 
@@ -138,15 +140,37 @@ internal sealed class ApiServer : IAsyncDisposable
                 }
                 return;
             }
+            var op = (req.Url?.AbsolutePath ?? "/").Trim('/');
+            if (req.HttpMethod == "GET" && op != "status")
+            {
+                // Every other operation changes state; a plain GET (an <img> tag, a link prefetcher, a browser
+                // history replay) must not be able to trigger it.
+                res.StatusCode = 405;
+                res.Headers["Allow"] = "POST";
+                res.Close();
+                return;
+            }
             JsonElement body = default;
             if (req.HttpMethod == "POST" && req.HasEntityBody)
             {
-                using var reader = new StreamReader(req.InputStream, Encoding.UTF8);
-                var text = await reader.ReadToEndAsync();
+                if (req.ContentLength64 > MaxBodyBytes)
+                {
+                    await WriteJsonAsync(res, 413, new { error = "Request body too large." });
+                    return;
+                }
+                string text;
+                try
+                {
+                    text = await ReadBodyAsync(req.InputStream, MaxBodyBytes);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    await WriteJsonAsync(res, 413, new { error = ex.Message });
+                    return;
+                }
                 if (text.Length > 0) body = JsonDocument.Parse(text).RootElement.Clone();
             }
-            var op = (req.Url?.AbsolutePath ?? "/").Trim('/');
-            var reply = req.HttpMethod == "GET" && op == "status" ? Status() : await DispatchAsync(op, body);
+            var reply = req.HttpMethod == "GET" ? Status() : await DispatchAsync(op, body);
             await WriteJsonAsync(res, 200, reply);
         }
         catch (Exception ex) when (ex is JsonException or CaptureException or ArgumentException or FormatException)
@@ -161,6 +185,20 @@ internal sealed class ApiServer : IAsyncDisposable
         }
     }
 
+    /// <summary>Reads at most <paramref name="maxBytes"/> from <paramref name="input"/>; throws if there's more.</summary>
+    private static async Task<string> ReadBodyAsync(Stream input, int maxBytes)
+    {
+        using var buffered = new MemoryStream();
+        var chunk = new byte[8192];
+        int read;
+        while ((read = await input.ReadAsync(chunk).ConfigureAwait(false)) > 0)
+        {
+            if (buffered.Length + read > maxBytes) throw new InvalidOperationException("Request body too large.");
+            buffered.Write(chunk, 0, read);
+        }
+        return Encoding.UTF8.GetString(buffered.ToArray());
+    }
+
     private async Task WebSocketLoopAsync(WebSocket ws)
     {
         var buffer = new byte[64 * 1024];
@@ -168,12 +206,19 @@ internal sealed class ApiServer : IAsyncDisposable
         {
             var sb = new StringBuilder();
             WebSocketReceiveResult r;
+            var total = 0;
             do
             {
                 r = await ws.ReceiveAsync(buffer, _stop.Token);
                 if (r.MessageType == WebSocketMessageType.Close)
                 {
                     await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
+                    return;
+                }
+                total += r.Count;
+                if (total > MaxWebSocketMessageBytes)
+                {
+                    await ws.CloseAsync(WebSocketCloseStatus.MessageTooBig, "Message too large.", CancellationToken.None);
                     return;
                 }
                 sb.Append(Encoding.UTF8.GetString(buffer, 0, r.Count));
