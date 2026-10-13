@@ -152,6 +152,7 @@ Placed beside the exe (picked up automatically), or passed with `-capture-config
 
 ```json
 {
+  "enabled": true,
   "outputRoot": "R:\\Recording",
   "fileTemplate": "{app}_{timestamp}",
   "tapeQuality": "Lossless",
@@ -171,6 +172,9 @@ Placed beside the exe (picked up automatically), or passed with `-capture-config
 }
 ```
 
+- **`enabled`:** global per-repo kill switch (default `true`). `false` makes every capture call a no-op
+  (screenshots, tour capture, session recording) without touching the shared package or other projects;
+  read before command-line flags (`MINDATTIC_CAPTURE=0` is the equivalent env-var kill switch).
 - **Actions:** `screenshot`, `replay`, `clip`, `marker`, `start-recording`, `stop-recording`, `toggle-recording`.
 - **Rule controls:** `where`, `cooldown`, `debounce`, `maxPerSession`, `enabled`, `preset`, `format`.
 - **Presets:**
