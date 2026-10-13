@@ -6,12 +6,14 @@ using UnityEngine;
 namespace MindAttic.Capture.Unity
 {
     /// <summary>
-    /// MindAttic.Capture for Unity. Starts automatically in the Windows editor and in capture-enabled Windows players:
+    /// MindAttic.Capture for Unity. Off unless you ask: no environment variable, no auto-loaded
+    /// project config — only the literal <c>-capture</c> flag on the command line turns it on, in the
+    /// Windows editor and in capture-enabled Windows players:
     /// <list type="bullet">
     /// <item><c>Game.exe -capture video</c>: film the game view from start to exit at native resolution.</item>
     /// <item><c>Game.exe -capture screen 5</c>: a PNG every 5 seconds until exit (both: <c>-capture video screen 5</c>).</item>
     /// <item>Editor: menu MindAttic ▸ Capture toggles the same modes for Play Mode.</item>
-    /// <item>Game code: <c>CaptureUnity.Raise("critical-hit")</c>; rules in StreamingAssets/capture.json turn events into screenshots, clips and replays.</item>
+    /// <item>Game code: <c>CaptureUnity.Raise("critical-hit")</c>; rules loaded via an explicit <c>-capture-config path.json</c> turn events into screenshots, clips and replays.</item>
     /// <item>Production builds ignore all of it: capture runs in the editor, development builds, and builds made with the
     /// MINDATTIC_CAPTURE define (MindAttic ▸ Capture ▸ Build Windows Player (Capture Enabled)).</item>
     /// </list>
@@ -63,7 +65,7 @@ namespace MindAttic.Capture.Unity
             if (Application.platform != RuntimePlatform.WindowsPlayer && Application.platform != RuntimePlatform.WindowsEditor) return;
             if (!IsCaptureBuild)
             {
-                if (CaptureArgs.Parse(Environment.GetCommandLineArgs().Skip(1), environment: "").Any)
+                if (CaptureArgs.Parse(Environment.GetCommandLineArgs().Skip(1)).Any)
                     Debug.Log("[MindAttic.Capture] -capture is ignored in production builds; use MindAttic ▸ Capture ▸ Build Windows Player (Capture Enabled).");
                 return;
             }
@@ -94,9 +96,6 @@ namespace MindAttic.Capture.Unity
                 Json = new NewtonsoftCaptureJson(),
                 Log = new UnityCaptureLog(),
             };
-            var config = Path.Combine(Application.streamingAssetsPath, "capture.json");
-            if (File.Exists(config)) options.ApplyConfigFile(config);
-
             CaptureArgs args;
             if (Application.isEditor)
             {

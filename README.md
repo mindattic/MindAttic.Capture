@@ -46,9 +46,13 @@ Game.exe -capture video screen 5        # both
 Game.exe -demo -capture video hq        # hardware HEVC tape (~0.2 GB/min) instead of lossless
 Game.exe -capture video 8h              # stop after 8 hours (the shut-off valve can stop it sooner)
 Game.exe -capture                       # same as -capture video
-Game.exe -capture video -capture-config capture.json
-set MINDATTIC_CAPTURE=video screen 5    # same words via the environment; MINDATTIC_CAPTURE=0 is a kill switch
+Game.exe -capture video -capture-config capture.json   # explicitly opt into settings/rules from a file
 ```
+
+Capture is off unless the `-capture` flag is literally on the command line: there is no environment
+variable and no project config auto-loaded on launch, so a plain launch is always a plain launch.
+`-capture-config path.json` is the one way to bring in settings or trigger rules, and it is opt-in —
+you have to pass it yourself.
 
 `-capture` followed by anything that isn't a capture word (for example an app's own `-capture <folder>`)
 is left alone. `-demo` and other flags belong to the app: capture only records what runs.
@@ -95,9 +99,11 @@ The app's project needs `net10.0-windows10.0.19041.0` (or later) and `MINDATTIC_
 
 **Unity game:** add to `Packages/manifest.json`
 `"com.mindattic.capture": "file:../../MindAttic.Capture/unity/com.mindattic.capture"`. Players
-then honor `-capture video` / `-capture screen 5`; in the editor use **MindAttic ▸ Capture** to
-record Play Mode. Game code raises events with `CaptureUnity.Raise("battle-complete")`; rules go in
-`Assets/StreamingAssets/capture.json`.
+then honor `-capture video` / `-capture screen 5` and nothing else — there is no project config
+auto-loaded from StreamingAssets, so a plain launch never has capture silently on or off by
+surprise; in the editor use **MindAttic ▸ Capture** to record Play Mode. Game code raises events
+with `CaptureUnity.Raise("battle-complete")`; to bring in rules, pass `-capture-config path.json`
+explicitly.
 
 **Websites:** `C:\Apps\MindAttic.Browser\MindAttic.Browser.exe <url | site folder> -capture video`. Capture
 always uses this deployed copy of [MindAttic.Browser](https://github.com/mindattic/MindAttic.Browser) (`capture run --url`
@@ -172,9 +178,10 @@ Placed beside the exe (picked up automatically), or passed with `-capture-config
 }
 ```
 
-- **`enabled`:** global per-repo kill switch (default `true`). `false` makes every capture call a no-op
-  (screenshots, tour capture, session recording) without touching the shared package or other projects;
-  read before command-line flags (`MINDATTIC_CAPTURE=0` is the equivalent env-var kill switch).
+- **`enabled`:** (default `true`) `false` makes every capture call a no-op. Only takes effect via an
+  explicitly-loaded file (`-capture-config path.json`) — there is no auto-loaded project config and
+  no environment variable, so this never turns capture off behind your back; an explicit `-capture ...`
+  on the same command line always wins over it anyway.
 - **Actions:** `screenshot`, `replay`, `clip`, `marker`, `start-recording`, `stop-recording`, `toggle-recording`.
 - **Rule controls:** `where`, `cooldown`, `debounce`, `maxPerSession`, `enabled`, `preset`, `format`.
 - **Presets:**

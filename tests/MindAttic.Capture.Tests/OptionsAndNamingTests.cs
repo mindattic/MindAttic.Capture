@@ -9,7 +9,7 @@ namespace MindAttic.Capture.Tests;
 
 public class CaptureArgsTests
 {
-    private static CaptureArgs P(params string[] args) => CaptureArgs.Parse(args, environment: "");
+    private static CaptureArgs P(params string[] args) => CaptureArgs.Parse(args);
 
     [Test]
     public void Bare_flag_means_video()
@@ -79,27 +79,26 @@ public class CaptureArgsTests
     }
 
     [Test]
-    public void Environment_variable_takes_the_same_words_or_kills()
-    {
-        Assert.That(CaptureArgs.Parse([], "1").Video, Is.True);
-        Assert.That(CaptureArgs.Parse([], "screen 3").ScreenInterval, Is.EqualTo(TimeSpan.FromSeconds(3)));
-        Assert.That(CaptureArgs.Parse([], "hq").Quality, Is.EqualTo(TapeQuality.HighQuality));
-        var killed = CaptureArgs.Parse(["-capture", "video"], "0");
-        Assert.That((killed.KillSwitch, killed.Any), Is.EqualTo((true, false)));
-        Assert.That(new CaptureOptions().Apply(killed).Enabled, Is.False);
-    }
-
-    [Test]
     public void Options_pick_up_both_modes()
     {
         var o = new CaptureOptions().Apply(P("-capture", "video", "screen", "5"));
         Assert.That((o.SessionRecording, o.ScreenshotInterval), Is.EqualTo((true, (TimeSpan?)TimeSpan.FromSeconds(5))));
     }
 
+    /// <summary>A repo's capture.json may default Enabled to false (a standing per-repo kill switch,
+    /// e.g. to stop capture from running unattended); an explicit "-capture ..." on the command line
+    /// must still turn it on, or the flag would silently do nothing.</summary>
+    [Test]
+    public void Explicit_request_overrides_a_config_files_standing_kill_switch()
+    {
+        var o = new CaptureOptions { Enabled = false }.Apply(P("-capture", "video"));
+        Assert.That(o.Enabled, Is.True);
+    }
+
     [TestCase("ultra")]
     [TestCase("screen", "50ms")]
     public void Bad_words_fail_loudly(params string[] words) =>
-        Assert.Throws<CaptureException>(() => CaptureArgs.Parse(["-capture=" + string.Join(" ", words)], ""));
+        Assert.Throws<CaptureException>(() => CaptureArgs.Parse(["-capture=" + string.Join(" ", words)]));
 }
 
 public class DurationTextTests
@@ -123,7 +122,7 @@ public class DurationTextTests
 
     [Test]
     public void A_non_duration_word_after_capture_is_ignored_not_fatal() =>
-        Assert.That(CaptureArgs.Parse(["-capture", "video", "nan"], environment: "").Video, Is.True);
+        Assert.That(CaptureArgs.Parse(["-capture", "video", "nan"]).Video, Is.True);
 }
 
 public class OutputManagerTests
@@ -255,7 +254,7 @@ public class ResourceValveTests
         File.WriteAllText(path, """{ "tapeQuality": "Lossless", "limits": { "maxDuration": "1h" } }""");
         try
         {
-            var o = new CaptureOptions().Apply(CaptureArgs.Parse(["-capture", "video", "8h", "hq", "-capture-config", path], environment: ""));
+            var o = new CaptureOptions().Apply(CaptureArgs.Parse(["-capture", "video", "8h", "hq", "-capture-config", path]));
             Assert.That((o.TapeQuality, o.Limits.MaxDuration), Is.EqualTo((TapeQuality.HighQuality, (TimeSpan?)TimeSpan.FromHours(8))));
         }
         finally
@@ -267,7 +266,7 @@ public class ResourceValveTests
     [Test]
     public void Video_duration_word_and_config_set_the_limits()
     {
-        var a = CaptureArgs.Parse(["-capture", "video", "8h", "hq"], environment: "");
+        var a = CaptureArgs.Parse(["-capture", "video", "8h", "hq"]);
         Assert.That((a.Video, a.MaxDuration, a.Quality), Is.EqualTo((true, (TimeSpan?)TimeSpan.FromHours(8), (TapeQuality?)TapeQuality.HighQuality)));
         Assert.That(new CaptureOptions().Apply(a).Limits.MaxDuration, Is.EqualTo(TimeSpan.FromHours(8)));
 

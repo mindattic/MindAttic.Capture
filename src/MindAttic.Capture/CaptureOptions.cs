@@ -87,12 +87,14 @@ public sealed class CaptureOptions
     /// <summary>JSON implementation (required on netstandard2.1).</summary>
     public ICaptureJson? Json { get; set; } = CaptureJsonDefaults.Create();
 
-    /// <summary>Applies parsed command-line flags (and the environment).</summary>
+    /// <summary>Applies parsed command-line flags.</summary>
     public CaptureOptions Apply(CaptureArgs args)
     {
-        // The config file first, so flags typed on this command line win over it.
+        // An explicitly-loaded config file (-capture-config) is applied first, so an explicit
+        // "-capture ..." on the same command line always wins over it, even if the file sets
+        // Enabled: false.
         if (args.ConfigPath is { } path) ApplyConfigFile(path);
-        if (args.KillSwitch) Enabled = false;
+        if (args.Any) Enabled = true;
         if (args.Video) SessionRecording = true;
         if (args.ScreenInterval is { } interval) ScreenshotInterval = interval;
         if (args.Quality is { } q) TapeQuality = q;
@@ -279,15 +281,15 @@ public sealed class PostCaptureConfig
 }
 
 /// <summary>
-/// Parses the <c>-capture</c> flag and the MINDATTIC_CAPTURE environment variable:
+/// Parses the <c>-capture</c> flag — the only way to turn capture on; there is no environment
+/// variable or auto-loaded project config, so a plain launch is always a plain launch:
 /// <list type="bullet">
 /// <item><c>-capture</c> or <c>-capture video</c>: record the app's window from start to exit at native resolution.</item>
 /// <item><c>-capture screen 5</c>: a PNG every 5 seconds (any duration: 500ms, 10s, 1m) for as long as the app runs.</item>
 /// <item><c>-capture video screen 5</c>: both. Add <c>hq</c> for a hardware-HEVC tape instead of lossless.</item>
 /// <item><c>-capture video 8h</c>: stop after 8 hours (resource limits can stop it sooner; see <see cref="CaptureLimits"/>).</item>
-/// <item><c>-capture-config capture.json</c>: load settings and trigger rules.</item>
+/// <item><c>-capture-config capture.json</c>: explicitly load settings and trigger rules from a file.</item>
 /// </list>
-/// MINDATTIC_CAPTURE takes the same words ("video screen 5"); "0" is a kill switch.
 /// </summary>
 public sealed record CaptureArgs
 {
@@ -309,15 +311,13 @@ public sealed record CaptureArgs
     public TimeSpan? MaxDuration { get; init; }
     /// <summary><c>-capture-config path</c>.</summary>
     public string? ConfigPath { get; init; }
-    /// <summary>MINDATTIC_CAPTURE=0 disables capture entirely.</summary>
-    public bool KillSwitch { get; init; }
     /// <summary>Set when <c>-capture</c> was followed by a word that is not a capture mode (another meaning of the flag), which was ignored.</summary>
     public string? Ignored { get; init; }
     /// <summary>True when any capture mode was requested.</summary>
     public bool Any => Video || ScreenInterval is not null;
 
-    /// <summary>Parses <paramref name="args"/> (and MINDATTIC_CAPTURE unless <paramref name="environment"/> is given).</summary>
-    public static CaptureArgs Parse(IEnumerable<string> args, string? environment = null)
+    /// <summary>Parses <paramref name="args"/>.</summary>
+    public static CaptureArgs Parse(IEnumerable<string> args)
     {
         var result = new CaptureArgs();
         var list = args.ToList();
@@ -351,13 +351,6 @@ public sealed record CaptureArgs
                     result = result with { ConfigPath = value ?? throw new CaptureException(CaptureError.InvalidArgument, "-capture-config needs a path.") };
                     break;
             }
-        }
-        var env = environment ?? Environment.GetEnvironmentVariable("MINDATTIC_CAPTURE");
-        if (!string.IsNullOrWhiteSpace(env))
-        {
-            var text = env!.Trim();
-            if (text == "0") result = new CaptureArgs { KillSwitch = true, ConfigPath = result.ConfigPath };
-            else if (!result.Any) result = Apply(result, text == "1" ? [] : text.Split([',', ' ', '+'], StringSplitOptions.RemoveEmptyEntries));
         }
         return result;
     }
