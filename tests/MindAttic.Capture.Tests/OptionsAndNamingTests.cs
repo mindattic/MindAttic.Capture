@@ -144,23 +144,26 @@ public class OutputManagerTests
     {
         var m = Manager("{app}-{kind}-{date}-{time}-{tag}-{index}-{session}");
         var name = m.Expand("{app}-{kind}-{date}-{time}-{tag}-{index}-{timestamp}", CaptureKind.Replay, "Boss Death!", 7);
-        Assert.That(name, Is.EqualTo("My_App-replay-2026-10-11-143005_123-Boss-Death-007-2026-10-11T14.30.05.123"));
+        Assert.That(name, Is.EqualTo("My_App-Replay-2026-10-11-143005_123-Boss-Death-007-2026.10.11T14.30.05Z"));
     }
 
     [Test]
-    public void Captures_go_straight_into_the_app_folder_named_by_app_and_iso_timestamp()
+    public void Captures_land_in_their_own_session_folder_named_by_timestamp_and_app()
     {
         var m = Manager(new CaptureOptions().FileTemplate);
-        Assert.That(m.SessionDir, Is.EqualTo(Path.Combine(_dir, "My_App")));
-        Assert.That(m.SessionId, Is.EqualTo("2026-10-11T14.30.05.123"));
-        Assert.That(m.SessionStem, Is.EqualTo(Path.Combine(_dir, "My_App", "My_App_2026-10-11T14.30.05.123")));
-        Assert.That(m.NextStem(CaptureKind.Screenshot, "x"), Is.EqualTo(Path.Combine(_dir, "My_App", "My_App_2026-10-11T14.30.05.123")));
-        Assert.That(m.NextStem(CaptureKind.Screenshot, "x"), Is.EqualTo(Path.Combine(_dir, "My_App", "My_App_2026-10-11T14.30.05.123_2")));
+        const string sessionName = "2026.10.11T14.30.05Z_My_App";
+        var sessionDir = Path.Combine(_dir, "My_App", sessionName);
+        Assert.That(m.SessionDir, Is.EqualTo(sessionDir));
+        Assert.That(m.SessionId, Is.EqualTo("2026.10.11T14.30.05Z"));
+        Assert.That(m.SessionStem, Is.EqualTo(Path.Combine(sessionDir, sessionName)));
+        Assert.That(m.VideoStem, Is.EqualTo(Path.Combine(sessionDir, sessionName + "_Video")));
+        Assert.That(m.NextStem(CaptureKind.Screenshot, "x"), Is.EqualTo(Path.Combine(sessionDir, sessionName + "_Screenshot_000")));
+        Assert.That(m.NextStem(CaptureKind.Screenshot, "x"), Is.EqualTo(Path.Combine(sessionDir, sessionName + "_Screenshot_001")));
     }
 
     [Test]
-    public void Iso_timestamp_uses_dots_instead_of_colons() =>
-        Assert.That(CaptureNaming.Timestamp(new DateTimeOffset(2026, 1, 2, 3, 4, 5, 6, TimeSpan.Zero)), Is.EqualTo("2026-01-02T03.04.05.006"));
+    public void Timestamp_is_utc_dotted_with_a_trailing_z() =>
+        Assert.That(CaptureNaming.Timestamp(new DateTimeOffset(2026, 1, 2, 3, 4, 5, 6, TimeSpan.Zero)), Is.EqualTo("2026.01.02T03.04.05Z"));
 
     [Test]
     public void Repo_name_is_the_nearest_folder_with_git()

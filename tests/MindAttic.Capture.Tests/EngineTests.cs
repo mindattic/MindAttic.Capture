@@ -243,8 +243,8 @@ public class EngineTests
         }));
         string? reason = null;
         engine.LimitReached += r => reason = r;
-        var stem = Path.Combine(engine.SessionFolder, "Test_" + engine.SessionId);
-        var staging = Path.Combine(_root, ".staging", "Test_" + engine.SessionId);
+        var stem = Path.Combine(engine.SessionFolder, engine.SessionId + "_Test");
+        var staging = Path.Combine(_root, ".staging", engine.SessionId + "_Test");
         var wait = Stopwatch.StartNew();
         // The export ends by removing the staging tape.
         while ((engine.Enabled || Directory.Exists(staging)) && wait.Elapsed < TimeSpan.FromSeconds(90)) await Task.Delay(200);
@@ -252,7 +252,7 @@ public class EngineTests
 
         Assert.That(reason, Does.Contain("maximum duration"));
         Assert.That(engine.Enabled, Is.False);
-        Assert.That(Probe(stem + ".mkv", "format=duration"), Is.EqualTo(3.0).Within(1.0));
+        Assert.That(Probe(stem + "_Video.mkv", "format=duration"), Is.EqualTo(3.0).Within(1.0));
         Assert.That(File.ReadAllLines(stem + ".stats.csv"), Has.Length.GreaterThanOrEqualTo(4));
         Assert.That(File.ReadAllText(stem + ".session.json"), Does.Contain("\"stoppedBy\": \"the maximum duration"));
     }
@@ -266,7 +266,7 @@ public class EngineTests
             o.Limits.MaxDuration = TimeSpan.FromSeconds(2);
             o.Limits.PollInterval = TimeSpan.FromMilliseconds(500);
         }));
-        var stem = Path.Combine(engine.SessionFolder, "Test_" + engine.SessionId);
+        var stem = Path.Combine(engine.SessionFolder, engine.SessionId + "_Test_Video");
         var wait = Stopwatch.StartNew();
         while (engine.Enabled && wait.Elapsed < TimeSpan.FromSeconds(30)) await Task.Delay(100);
         Assert.That(engine.Enabled, Is.False, "the valve should have stopped capture");
@@ -314,15 +314,15 @@ public class EngineTests
             engine.Marker("boss");
             await Task.Delay(3000);
         }
-        Assert.That(folder, Is.EqualTo(Path.Combine(_root, "Test")));
-        Assert.That(session, Does.Match(@"^\d{4}-\d\d-\d\dT\d\d\.\d\d\.\d\d\.\d{3}$"));
-        var stem = Path.Combine(folder, "Test_" + session);
-        var mkv = stem + ".mkv";
+        Assert.That(session, Does.Match(@"^\d{4}\.\d\d\.\d\dT\d\d\.\d\d\.\d\dZ$"));
+        Assert.That(folder, Is.EqualTo(Path.Combine(_root, "Test", session + "_Test")));
+        var stem = Path.Combine(folder, session + "_Test");
+        var mkv = stem + "_Video.mkv";
         Assert.That(File.Exists(mkv), Is.True);
-        Assert.That(File.Exists(stem + ".mp4"), Is.True);
+        Assert.That(File.Exists(stem + "_Video.mp4"), Is.True);
         Assert.That(Probe(mkv, "format=duration"), Is.EqualTo(3.0).Within(0.5));
         Assert.That(File.ReadAllText(stem + ".session.json"), Does.Contain("\"kind\": \"session\""));
-        Assert.That(Directory.Exists(Path.Combine(_root, ".staging", "Test_" + session)), Is.False);
+        Assert.That(Directory.Exists(Path.Combine(_root, ".staging", session + "_Test")), Is.False);
     }
 
     [Test]
@@ -365,6 +365,8 @@ public class EngineTests
         {
             Capture.Raise("boot");
             Capture.Marker("boot");
-            Capture.Screenshot("boot");
+            Capture.TakeScreenshot("boot");
+            Capture.StartRecording("boot");
+            Capture.StopRecording();
         });
 }

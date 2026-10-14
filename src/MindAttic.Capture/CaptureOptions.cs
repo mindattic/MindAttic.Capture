@@ -25,10 +25,12 @@ public sealed class CaptureOptions
     public string? AppVersion { get; set; } = Assembly.GetEntryAssembly()?.GetName().Version?.ToString();
 
     /// <summary>
-    /// File name template (default "{app}_{timestamp}", e.g. UnitySolarSystem_2026-10-11T14.29.20.123), so a file
-    /// says what it shows even outside its folder. Tokens: {timestamp} {date} {time} {session} {tag} {index} {kind} {app}.
+    /// File name template (default "{session}_{app}_{kind}_{index}", e.g.
+    /// 2026.10.13T04.49.12Z_GridGameGaiden_Screenshot_000) — every file in a session shares its
+    /// {session} timestamp, so a file says what it shows and which session it belongs to even outside
+    /// its folder. Tokens: {timestamp} {date} {time} {session} {tag} {index} {kind} {app}.
     /// </summary>
-    public string FileTemplate { get; set; } = "{app}_{timestamp}";
+    public string FileTemplate { get; set; } = "{session}_{app}_{kind}_{index}";
 
     /// <summary>ffmpeg executable: full path, or a name found next to the app or on PATH.</summary>
     public string FfmpegPath { get; set; } = "ffmpeg";

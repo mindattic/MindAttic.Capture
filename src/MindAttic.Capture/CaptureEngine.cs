@@ -612,7 +612,7 @@ public sealed class CaptureEngine : ICapture
             {
                 AppName = _options.AppName, AppVersion = _options.AppVersion, SessionId = _output.SessionId,
                 SessionDir = _output.SessionDir, SessionStem = _output.SessionStem,
-                OutputStem = number == 1 ? null : $"{_output.SessionStem}_part{number}",
+                OutputStem = number == 1 ? _output.VideoStem : $"{_output.VideoStem}_part{number}",
                 FfmpegPath = Ffmpeg, CreatedAt = DateTimeOffset.Now, Fps = _options.Fps, Quality = _options.TapeQuality, Encoder = encoder,
                 SessionRecording = _options.SessionRecording, SessionOutputs = _options.SessionOutputs,
                 OwnerPid = me.Id, OwnerStartTicks = me.StartTime.ToUniversalTime().Ticks,

@@ -56,7 +56,18 @@ namespace MindAttic.Capture.Unity
         public static void Marker(string name, CaptureData data = null) => Capture.Current.Marker(name, data);
 
         /// <summary>Takes a screenshot of the game view (fire and forget).</summary>
-        public static void Screenshot(string tag = "screenshot") => _ = Capture.Current.ScreenshotAsync(tag);
+        public static void TakeScreenshot(string tag = "screenshot") => _ = Capture.Current.ScreenshotAsync(tag);
+
+        /// <summary>
+        /// Starts an on-demand recording (fire and forget; cut from the tape, so starting is instant).
+        /// Call this to bound a recording to something narrower than the whole <c>-capture video</c>
+        /// run — e.g. the tour's own start — so its export lands as its own file instead of the one
+        /// continuous session video.
+        /// </summary>
+        public static void StartRecording(string tag = "recording") => _ = Capture.Current.StartRecordingAsync(tag);
+
+        /// <summary>Stops the recording started by <see cref="StartRecording"/> and exports it (fire and forget).</summary>
+        public static void StopRecording() => _ = Capture.Current.StopRecordingAsync();
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Boot()

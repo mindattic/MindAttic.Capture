@@ -160,7 +160,24 @@ internal sealed class OutputManager
         }
     }
 
-    /// <summary>{root}\{app}\ — every capture of this app lands here, named by timestamp; created on first use.</summary>
+    /// <summary>{root}\{app}\ — every session of this app gets its own folder underneath; created on first use.</summary>
+    public string AppDir
+    {
+        get
+        {
+            lock (_gate)
+            {
+                var dir = Path.Combine(Root, Sanitize(_options.AppName));
+                Directory.CreateDirectory(dir);
+                return dir;
+            }
+        }
+    }
+
+    /// <summary>{timestamp}_{app}: shared by the session folder and every file's name inside it.</summary>
+    public string SessionName => $"{SessionId}_{Sanitize(_options.AppName)}";
+
+    /// <summary>{app folder}\{timestamp}_{app}\ — this run's own folder: its video, screenshots, log and manifest.</summary>
     public string SessionDir
     {
         get
@@ -168,7 +185,7 @@ internal sealed class OutputManager
             lock (_gate)
             {
                 if (_sessionDir is not null) return _sessionDir;
-                var dir = Path.Combine(Root, Sanitize(_options.AppName));
+                var dir = Path.Combine(AppDir, SessionName);
                 Directory.CreateDirectory(dir);
                 _sessionDir = dir;
                 return dir;
@@ -176,11 +193,14 @@ internal sealed class OutputManager
         }
     }
 
-    /// <summary>{app folder}\{app}_{session start}: the session video and its manifest ({stem}.session.json).</summary>
-    public string SessionStem => Path.Combine(SessionDir, $"{Sanitize(_options.AppName)}_{SessionId}");
+    /// <summary>{session folder}\{timestamp}_{app}: the manifest ({stem}.session.json), log and stats.</summary>
+    public string SessionStem => Path.Combine(SessionDir, SessionName);
+
+    /// <summary>{session folder}\{timestamp}_{app}_Video: the whole-session (or Start/StopRecording) export.</summary>
+    public string VideoStem => $"{SessionStem}_Video";
 
     /// <summary>Tape segments live here: on the output volume so finalizing never copies across drives.</summary>
-    public string StagingDir => Path.Combine(Root, ".staging", $"{Sanitize(_options.AppName)}_{SessionId}");
+    public string StagingDir => Path.Combine(Root, ".staging", SessionName);
 
     /// <summary>Full path without extension for the next capture, from the file template.</summary>
     public string NextStem(CaptureKind kind, string tag)
@@ -188,7 +208,7 @@ internal sealed class OutputManager
         var dir = SessionDir;
         lock (_gate)
         {
-            var index = ++_index;
+            var index = _index++;
             var name = Expand(_options.FileTemplate, kind, tag, index);
             // Templates without {index}/{time} repeat names; suffix a counter instead of overwriting.
             for (var n = 1; ; n++)
@@ -213,7 +233,7 @@ internal sealed class OutputManager
           .Replace("{session}", SessionId)
           .Replace("{tag}", SanitizeTag(tag))
           .Replace("{index}", index.ToString("000", CultureInfo.InvariantCulture))
-          .Replace("{kind}", kind.ToString().ToLowerInvariant())
+          .Replace("{kind}", kind.ToString())
           .Replace("{app}", Sanitize(_options.AppName));
         var name = Sanitize(sb.ToString());
         return name.Length > 0 ? name : $"capture_{index:000}";
@@ -312,7 +332,7 @@ internal sealed class OutputManager
             {
                 _bytesWritten += new FileInfo(file).Length;
                 if (_baselineBytes < 0)
-                    _baselineBytes = DirectorySize(Path.Combine(Root, Sanitize(_options.AppName))) - _bytesWritten;
+                    _baselineBytes = DirectorySize(AppDir) - _bytesWritten;
                 totalGb = (_baselineBytes + _bytesWritten) / 1e9;
                 shouldWarn = totalGb > limit && !_diskWarned;
                 if (shouldWarn) _diskWarned = true;

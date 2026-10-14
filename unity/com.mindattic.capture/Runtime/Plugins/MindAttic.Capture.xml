@@ -105,12 +105,13 @@
             <summary>Hands a stopped session tape to the detached finalizer, or exports it in-process.</summary>
         </member>
         <member name="T:MindAttic.Capture.CaptureNaming">
-            <summary>Output naming: R:\MindAttic\Capture\{RepoName}\{RepoName}_{timestamp}.{ext}.</summary>
+            <summary>Output naming: R:\MindAttic\Capture\{RepoName}\{timestamp}_{RepoName}\{timestamp}_{RepoName}_{Kind}.{ext}.</summary>
         </member>
         <member name="M:MindAttic.Capture.CaptureNaming.Timestamp(System.DateTimeOffset)">
             <summary>
-            ISO 8601 local time with ':' replaced by '.' (Windows file names cannot contain ':'),
-            to the millisecond: 2026-10-11T14.29.20.123.
+            UTC, ISO 8601-flavored with ':' replaced by '.' (Windows file names cannot contain ':') and a
+            trailing 'Z', to the second: 2026.10.13T04.49.12Z. One session's files all share this exact
+            string, so folder and file names agree without needing a separate per-file timestamp.
             </summary>
         </member>
         <member name="M:MindAttic.Capture.CaptureNaming.RepoName(System.String)">
@@ -140,8 +141,10 @@
         </member>
         <member name="P:MindAttic.Capture.CaptureOptions.FileTemplate">
             <summary>
-            File name template (default "{app}_{timestamp}", e.g. UnitySolarSystem_2026-10-11T14.29.20.123), so a file
-            says what it shows even outside its folder. Tokens: {timestamp} {date} {time} {session} {tag} {index} {kind} {app}.
+            File name template (default "{session}_{app}_{kind}_{index}", e.g.
+            2026.10.13T04.49.12Z_GridGameGaiden_Screenshot_000) — every file in a session shares its
+            {session} timestamp, so a file says what it shows and which session it belongs to even outside
+            its folder. Tokens: {timestamp} {date} {time} {session} {tag} {index} {kind} {app}.
             </summary>
         </member>
         <member name="P:MindAttic.Capture.CaptureOptions.FfmpegPath">
@@ -1092,8 +1095,17 @@
         <member name="M:MindAttic.Capture.Capture.Marker(System.String,MindAttic.Capture.CaptureData)">
             <summary>Drops a marker.</summary>
         </member>
-        <member name="M:MindAttic.Capture.Capture.Screenshot(System.String,MindAttic.Capture.ScreenshotOptions)">
+        <member name="M:MindAttic.Capture.Capture.TakeScreenshot(System.String,MindAttic.Capture.ScreenshotOptions)">
             <summary>Takes a screenshot (fire and forget).</summary>
+        </member>
+        <member name="M:MindAttic.Capture.Capture.StartRecording(System.String,MindAttic.Capture.RecordingOptions)">
+            <summary>
+            Starts an on-demand recording (fire and forget; cut from the tape, so starting is instant). Call
+            this to bound a recording to something narrower than the whole <c>-capture video</c> run.
+            </summary>
+        </member>
+        <member name="M:MindAttic.Capture.Capture.StopRecording">
+            <summary>Stops the recording started by <see cref="M:MindAttic.Capture.Capture.StartRecording(System.String,MindAttic.Capture.RecordingOptions)"/> and exports it (fire and forget).</summary>
         </member>
         <member name="T:MindAttic.Capture.NullCapture">
             <summary>Capture that does nothing; used when capture is disabled, stripped or not initialized.</summary>
@@ -1221,11 +1233,20 @@
         <member name="P:MindAttic.Capture.Output.OutputManager.Root">
             <summary>The configured root, or the fallback (with a warning) when its drive is missing.</summary>
         </member>
+        <member name="P:MindAttic.Capture.Output.OutputManager.AppDir">
+            <summary>{root}\{app}\ — every session of this app gets its own folder underneath; created on first use.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Output.OutputManager.SessionName">
+            <summary>{timestamp}_{app}: shared by the session folder and every file's name inside it.</summary>
+        </member>
         <member name="P:MindAttic.Capture.Output.OutputManager.SessionDir">
-            <summary>{root}\{app}\ — every capture of this app lands here, named by timestamp; created on first use.</summary>
+            <summary>{app folder}\{timestamp}_{app}\ — this run's own folder: its video, screenshots, log and manifest.</summary>
         </member>
         <member name="P:MindAttic.Capture.Output.OutputManager.SessionStem">
-            <summary>{app folder}\{app}_{session start}: the session video and its manifest ({stem}.session.json).</summary>
+            <summary>{session folder}\{timestamp}_{app}: the manifest ({stem}.session.json), log and stats.</summary>
+        </member>
+        <member name="P:MindAttic.Capture.Output.OutputManager.VideoStem">
+            <summary>{session folder}\{timestamp}_{app}_Video: the whole-session (or Start/StopRecording) export.</summary>
         </member>
         <member name="P:MindAttic.Capture.Output.OutputManager.StagingDir">
             <summary>Tape segments live here: on the output volume so finalizing never copies across drives.</summary>

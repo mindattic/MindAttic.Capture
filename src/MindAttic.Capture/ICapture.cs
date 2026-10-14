@@ -148,7 +148,18 @@ public static class Capture
 
     /// <summary>Takes a screenshot (fire and forget).</summary>
     [Conditional("MINDATTIC_CAPTURE")]
-    public static void Screenshot(string tag, ScreenshotOptions? options = null) => _ = Current.ScreenshotAsync(tag, options);
+    public static void TakeScreenshot(string tag = "screenshot", ScreenshotOptions? options = null) => _ = Current.ScreenshotAsync(tag, options);
+
+    /// <summary>
+    /// Starts an on-demand recording (fire and forget; cut from the tape, so starting is instant). Call
+    /// this to bound a recording to something narrower than the whole <c>-capture video</c> run.
+    /// </summary>
+    [Conditional("MINDATTIC_CAPTURE")]
+    public static void StartRecording(string tag = "recording", RecordingOptions? options = null) => _ = Current.StartRecordingAsync(tag, options);
+
+    /// <summary>Stops the recording started by <see cref="StartRecording"/> and exports it (fire and forget).</summary>
+    [Conditional("MINDATTIC_CAPTURE")]
+    public static void StopRecording() => _ = Current.StopRecordingAsync();
 }
 
 /// <summary>Capture that does nothing; used when capture is disabled, stripped or not initialized.</summary>

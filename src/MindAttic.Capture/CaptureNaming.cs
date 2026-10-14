@@ -2,15 +2,16 @@ using System.Globalization;
 
 namespace MindAttic.Capture;
 
-/// <summary>Output naming: R:\MindAttic\Capture\{RepoName}\{RepoName}_{timestamp}.{ext}.</summary>
+/// <summary>Output naming: R:\MindAttic\Capture\{RepoName}\{timestamp}_{RepoName}\{timestamp}_{RepoName}_{Kind}.{ext}.</summary>
 public static class CaptureNaming
 {
     /// <summary>
-    /// ISO 8601 local time with ':' replaced by '.' (Windows file names cannot contain ':'),
-    /// to the millisecond: 2026-10-11T14.29.20.123.
+    /// UTC, ISO 8601-flavored with ':' replaced by '.' (Windows file names cannot contain ':') and a
+    /// trailing 'Z', to the second: 2026.10.13T04.49.12Z. One session's files all share this exact
+    /// string, so folder and file names agree without needing a separate per-file timestamp.
     /// </summary>
     public static string Timestamp(DateTimeOffset time) =>
-        time.ToString("yyyy-MM-dd'T'HH.mm.ss.fff", CultureInfo.InvariantCulture);
+        time.UtcDateTime.ToString("yyyy.MM.dd'T'HH.mm.ss'Z'", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// The name of the git repository containing <paramref name="path"/> (the nearest folder holding a .git

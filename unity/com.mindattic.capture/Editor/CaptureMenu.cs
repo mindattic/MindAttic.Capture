@@ -59,7 +59,7 @@ namespace MindAttic.Capture.Unity.Editor
         }
 
         [MenuItem(Root + "Take Screenshot _F12", priority = 20)]
-        private static void TakeScreenshot() => CaptureUnity.Screenshot("editor");
+        private static void TakeScreenshot() => CaptureUnity.TakeScreenshot("editor");
 
         [MenuItem(Root + "Take Screenshot _F12", true)]
         private static bool TakeScreenshotValidate() => EditorApplication.isPlaying && CaptureUnity.Engine.Enabled;
