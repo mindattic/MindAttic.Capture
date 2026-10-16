@@ -1,0 +1,22 @@
+{
+    "name": "MindAttic.Capture.Unity.Tests",
+    "rootNamespace": "MindAttic.Capture.Unity.Tests",
+    "references": [
+        "MindAttic.Capture.Unity",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

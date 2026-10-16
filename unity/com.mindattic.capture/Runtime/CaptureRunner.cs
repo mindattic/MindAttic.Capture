@@ -354,7 +354,7 @@ namespace MindAttic.Capture.Unity
             CaptureUnity.Detach(this);
         }
 
-        private static int ChannelCount(AudioSpeakerMode mode)
+        internal static int ChannelCount(AudioSpeakerMode mode)
         {
             switch (mode)
             {
@@ -370,7 +370,7 @@ namespace MindAttic.Capture.Unity
         // ------------------------------------------------------------ audio
 
         /// <summary>The game's own mix, tapped at the AudioListener (no other apps' sound).</summary>
-        private sealed class GameAudioTrack : IAudioTrackCapture
+        internal sealed class GameAudioTrack : IAudioTrackCapture
         {
             private readonly object _gate = new object();
             private readonly Stopwatch _clock = new Stopwatch();
@@ -475,7 +475,7 @@ namespace MindAttic.Capture.Unity
 
         // ------------------------------------------------------------ hotkeys
 
-        private readonly struct HotkeyBinding
+        internal readonly struct HotkeyBinding
         {
             private readonly bool _ctrl, _shift, _alt;
 #if MINDATTIC_INPUT_SYSTEM && ENABLE_INPUT_SYSTEM
