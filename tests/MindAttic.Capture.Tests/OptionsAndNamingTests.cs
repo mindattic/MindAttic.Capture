@@ -296,6 +296,7 @@ public class PostCaptureTests
         Assert.That(PostCaptureRunner.Expand(template, Shot, "s1"), Is.EqualTo(expected));
 }
 
+[NonParallelizable]
 public class FfmpegLocatorTests
 {
     private string _root = "";
@@ -337,6 +338,56 @@ public class FfmpegLocatorTests
         var exe = Touch("tools", "bin", "ffmpeg.exe");
         Assert.That(FfmpegLocator.ResolveShim(exe), Is.EqualTo(exe));
     }
+
+    [Test]
+    public void TryFind_resolves_an_existing_absolute_path()
+    {
+        var exe = Touch("somewhere", "ffmpeg.exe");
+        Assert.That(FfmpegLocator.TryFind(exe), Is.EqualTo(exe));
+    }
+
+    [Test]
+    public void TryFind_returns_null_for_a_missing_absolute_path() =>
+        Assert.That(FfmpegLocator.TryFind(Path.Combine(_root, "nope", "ffmpeg.exe")), Is.Null);
+
+    [Test]
+    public void TryFind_falls_back_to_the_apps_own_directory()
+    {
+        var local = Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
+        if (File.Exists(local)) Assert.Inconclusive($"{local} already exists; would clobber it.");
+        File.WriteAllText(local, "");
+        try
+        {
+            Assert.That(FfmpegLocator.TryFind("ffmpeg"), Is.EqualTo(local));
+        }
+        finally
+        {
+            File.Delete(local);
+        }
+    }
+
+    [Test]
+    public void TryFind_falls_back_to_PATH()
+    {
+        var dir = Touch("on-path", "placeholder.txt");
+        dir = Path.GetDirectoryName(dir)!;
+        var exe = Path.Combine(dir, "ffmpeg.exe");
+        File.WriteAllText(exe, "");
+        var oldPath = Environment.GetEnvironmentVariable("PATH");
+        try
+        {
+            Environment.SetEnvironmentVariable("PATH", dir + Path.PathSeparator + oldPath);
+            Assert.That(FfmpegLocator.TryFind("ffmpeg"), Is.EqualTo(exe));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", oldPath);
+        }
+    }
+
+    [Test]
+    public void TryFind_returns_null_when_nothing_matches() =>
+        Assert.That(FfmpegLocator.TryFind("totally-bogus-ffmpeg-binary-xyz"), Is.Null);
 }
 
 public class FfmpegArgsTests
