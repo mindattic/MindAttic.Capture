@@ -24,6 +24,8 @@ internal sealed class TrayApp : ApplicationContext
     private AreaChoice? _lastArea;
     private ArmedTarget _armed;
     private RecordingBorder? _border;
+    private string? _lastCapture;
+    private string? _balloonOpens;
 
     public TrayApp()
     {
@@ -34,6 +36,7 @@ internal sealed class TrayApp : ApplicationContext
         _menu.Opening += (_, _) => BuildMenu();
         _icon = new NotifyIcon { Icon = TrayIcons.Idle, Text = "MindAttic Capture", ContextMenuStrip = _menu, Visible = true };
         _icon.MouseClick += OnIconClick;
+        _icon.BalloonTipClicked += OnBalloonClicked;
         _tick.Tick += (_, _) => UpdateIcon();
         _hotkeys.Pressed += OnHotkey;
         RegisterHotkeys();
@@ -110,6 +113,9 @@ internal sealed class TrayApp : ApplicationContext
         _menu.Items.Add(RegionsMenu(idle));
 
         _menu.Items.Add(new ToolStripSeparator());
+        var last = _lastCapture is { } f && File.Exists(f) ? f : null;
+        _menu.Items.Add(new ToolStripMenuItem("Open Last Capture", null, (_, _) => OpenFile(last!)) { Enabled = last is not null });
+        _menu.Items.Add(new ToolStripMenuItem("Show Last Capture in Folder", null, (_, _) => ShowInExplorer(last!)) { Enabled = last is not null });
         _menu.Items.Add(new ToolStripMenuItem("Open Captures Folder", null, (_, _) => OpenCapturesFolder()));
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(new ToolStripMenuItem("Exit", null, (_, _) => _ = ExitAsync()));
@@ -229,7 +235,8 @@ internal sealed class TrayApp : ApplicationContext
     private void Arm(ArmedTarget target)
     {
         _armed = target;
-        _icon.ShowBalloonTip(4000, $"Ready: {target.Label}", $"{_settings.RecordHotkey} starts and stops recording it; {_settings.ScreenshotHotkey} takes a screenshot.", ToolTipIcon.Info);
+        Notify($"Ready: {target.Label}", $"{_settings.RecordHotkey} starts and stops recording it; {_settings.ScreenshotHotkey} takes a screenshot.", ToolTipIcon.Info, 4000, null);
+        UpdateIcon();
     }
 
     private async Task RecordAsync(ArmedTarget target)
@@ -272,13 +279,43 @@ internal sealed class TrayApp : ApplicationContext
         }
     }
 
+    /// <summary>Notifies the finished capture: every file written (lossless master and its MP4 copy sit side by side); clicking shows it.</summary>
     private void Report(CaptureResult result)
     {
-        if (result.Succeeded) _icon.ShowBalloonTip(5000, "Saved", string.Join(Environment.NewLine, result.Files.Select(Path.GetFileName)), ToolTipIcon.Info);
-        else ShowError("Capture failed", result.Error ?? "Unknown error.");
+        var (title, text) = CaptureReport.Describe(result, _recorder.LastSessionFolder);
+        if (result.Succeeded)
+        {
+            _lastCapture = result.PrimaryFile;
+            Notify(title, text, ToolTipIcon.Info, 8000, result.PrimaryFile);
+        }
+        else Notify(title, text, ToolTipIcon.Error, 15000, _recorder.LastSessionFolder);
     }
 
-    private void ShowError(string title, string message) => _icon.ShowBalloonTip(10000, title, message, ToolTipIcon.Error);
+    private void ShowError(string title, string message) => Notify(title, message, ToolTipIcon.Error, 10000, null);
+
+    /// <summary>A balloon; <paramref name="clickOpens"/> is the file (shown selected in Explorer) or folder a click opens.</summary>
+    private void Notify(string title, string text, ToolTipIcon icon, int ms, string? clickOpens)
+    {
+        _balloonOpens = clickOpens;
+        // Windows cuts balloon text at 255 characters.
+        _icon.ShowBalloonTip(ms, title, text.Length > 255 ? text[..252] + "..." : text, icon);
+    }
+
+    private void OnBalloonClicked(object? sender, EventArgs e)
+    {
+        if (_balloonOpens is { } path) ShowInExplorer(path);
+    }
+
+    private static void ShowInExplorer(string path)
+    {
+        if (File.Exists(path)) Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+        else if (Directory.Exists(path)) Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = true });
+    }
+
+    private static void OpenFile(string path)
+    {
+        if (File.Exists(path)) Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+    }
 
     private void UpdateIcon()
     {

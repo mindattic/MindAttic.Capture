@@ -72,6 +72,27 @@ public class TraySettingsTests
     }
 
     [Test]
+    public void A_finished_recording_lists_the_lossless_master_and_its_copy()
+    {
+        var mkv = Path.Combine(_dir, "a_Recording_000.mkv");
+        var mp4 = Path.Combine(_dir, "a_Recording_000.mp4");
+        File.WriteAllBytes(mkv, new byte[3 << 20]);
+        File.WriteAllBytes(mp4, new byte[2048]);
+        var (title, text) = CaptureReport.Describe(
+            new CaptureResult { Kind = CaptureKind.Recording, Files = [mkv, mp4], Duration = TimeSpan.FromSeconds(75) }, _dir);
+        Assert.That(title, Is.EqualTo("Recording (01:15) saved"));
+        Assert.That(text, Does.Contain("a_Recording_000.mkv  (3.0 MB)").And.Contain("a_Recording_000.mp4  (2 KB)"));
+    }
+
+    [Test]
+    public void A_failed_capture_points_at_the_session_log()
+    {
+        var (title, text) = CaptureReport.Describe(new CaptureResult { Kind = CaptureKind.Recording, Error = "ffmpeg exited 1" }, @"R:\MindAttic\Capture\Desktop");
+        Assert.That(title, Is.EqualTo("Capture failed"));
+        Assert.That(text, Does.StartWith("ffmpeg exited 1").And.Contain(@"the .log in R:\MindAttic\Capture\Desktop"));
+    }
+
+    [Test]
     public void A_broken_settings_file_is_set_aside_and_defaults_are_used()
     {
         var path = Path.Combine(_dir, "tray.json");

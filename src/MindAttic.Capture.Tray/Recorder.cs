@@ -18,7 +18,8 @@ internal sealed class Recorder : IAsyncDisposable
     public CaptureTarget? Target { get; private set; }
     public string Label { get; private set; } = "";
     public TimeSpan Elapsed => _clock.Elapsed;
-    public string? SessionFolder => _engine?.SessionFolder;
+    /// <summary>Where the latest recording or screenshot went (its session .log is there too).</summary>
+    public string? LastSessionFolder { get; private set; }
 
     public event Action? StateChanged;
 
@@ -30,6 +31,7 @@ internal sealed class Recorder : IAsyncDisposable
         try
         {
             _engine = await CaptureEngine.StartNewAsync(new DesktopCaptureHost(target), _options(appName));
+            LastSessionFolder = _engine.SessionFolder;
             await _engine.StartRecordingAsync(label, recording);
             if (!_engine.IsRecording)
                 throw new CaptureException(CaptureError.CaptureFailed, $"Recording did not start; see the .log in {_engine.SessionFolder}.");
@@ -68,6 +70,7 @@ internal sealed class Recorder : IAsyncDisposable
     public async Task<CaptureResult> ScreenshotAsync(CaptureTarget target, string appName, string label, ScreenshotOptions options)
     {
         await using var engine = await CaptureEngine.StartNewAsync(new DesktopCaptureHost(target), _options(appName));
+        LastSessionFolder = engine.SessionFolder;
         return await engine.ScreenshotAsync(label, options);
     }
 
