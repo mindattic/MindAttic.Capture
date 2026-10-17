@@ -27,23 +27,60 @@ internal sealed class RegionOverlay : LayeredWindow
     private Grip _grip;
     private Point _gripFrom;
     private PixelRect _gripStart;
+    private AspectRatio _ratio;
+    private readonly RegionToolbar _toolbar;
 
-    private RegionOverlay(PixelRect? initial)
+    private RegionOverlay(PixelRect? initial, AspectRatio ratio)
     {
         _desktop = VirtualDesktop();
         _selection = initial is { } r ? RegionMath.Clamp(r, _desktop) : null;
+        _ratio = ratio;
         Cursor = Cursors.Cross;
         Text = "MindAttic Capture - select an area";
+        _toolbar = new RegionToolbar(ratio);
+        _toolbar.RatioPicked += PickRatio;
+        _toolbar.KeyForwarded += e =>
+        {
+            OnKeyDown(e);
+            if (!IsDisposed) Activate();
+        };
         Place(_desktop);
     }
 
     /// <summary>Shows the selector (optionally starting from <paramref name="initial"/>) and completes when the user confirms or cancels.</summary>
-    public static Task<OverlayResult> PickAsync(PixelRect? initial = null)
+    public static Task<OverlayResult> PickAsync(PixelRect? initial = null, AspectRatio? ratio = null)
     {
-        var overlay = new RegionOverlay(initial);
+        var overlay = new RegionOverlay(initial, ratio ?? AspectRatio.Free);
         overlay.Show();
         overlay.Activate();
+        overlay.PlaceToolbar();
         return overlay._done.Task;
+    }
+
+    private void PickRatio(AspectRatio ratio)
+    {
+        _ratio = ratio;
+        _toolbar.SetRatio(ratio);
+        if (_selection is { } s && ratio.Value is { } k) _selection = RegionMath.FitAspect(s, k, _desktop);
+        Render();
+        PlaceToolbar();
+        Activate();
+    }
+
+    /// <summary>Shows the toolbar beside the selection on its monitor; hidden while there is nothing selected.</summary>
+    private void PlaceToolbar()
+    {
+        if (_selection is not { } s || _drawFrom is not null || _grip != Grip.None)
+        {
+            _toolbar.Hide();
+            return;
+        }
+        var center = new PixelRect(s.X + s.Width / 2, s.Y + s.Height / 2, 1, 1);
+        var screen = Desktop.GetMonitors().FirstOrDefault(m => m.Bounds.Contains(center))?.Bounds ?? _desktop;
+        var size = _toolbar.Visible ? _toolbar.Size : _toolbar.GetPreferredSize(Size.Empty);
+        var (x, y) = RegionMath.ToolbarSpot(s, size.Width, size.Height, screen, (int)Math.Round(16 * DpiScale));
+        _toolbar.Location = new Point(x, y);
+        if (!_toolbar.Visible) _toolbar.Show(this);
     }
 
     internal static PixelRect VirtualDesktop() =>
@@ -72,12 +109,14 @@ internal sealed class RegionOverlay : LayeredWindow
             _grip = grip;
             _gripFrom = p;
             _gripStart = s;
+            _toolbar.Hide();
             return;
         }
         // A press inside the cut-out does nothing, so a stray click can't throw the selection away.
         if (_selection is { } current && Inside(current, p)) return;
         _drawFrom = p;
         _selection = null;
+        _toolbar.Hide();
         Render();
     }
 
@@ -87,13 +126,19 @@ internal sealed class RegionOverlay : LayeredWindow
         var p = ToScreen(e.Location);
         if (_grip != Grip.None)
         {
-            _selection = RegionMath.Drag(_gripStart, _grip, p.X - _gripFrom.X, p.Y - _gripFrom.Y, _desktop);
+            _selection = RegionMath.Drag(_gripStart, _grip, p.X - _gripFrom.X, p.Y - _gripFrom.Y, _desktop, _ratio.Value);
             Render();
             return;
         }
         if (_drawFrom is { } from)
         {
-            _selection = RegionMath.Clamp(RegionMath.FromCorners(from.X, from.Y, p.X, p.Y), _desktop);
+            var drawn = _ratio.Value is { } k
+                ? RegionMath.FromCorners(from.X, from.Y, p.X, p.Y, k)
+                : RegionMath.FromCorners(from.X, from.Y, p.X, p.Y);
+            // A shaped rectangle that runs off the desktop is refitted rather than clipped, so it keeps its shape.
+            _selection = _ratio.Value is { } fit && !_desktop.Contains(drawn)
+                ? RegionMath.FitAspect(RegionMath.Clamp(drawn, _desktop), fit, _desktop)
+                : RegionMath.Clamp(drawn, _desktop);
             Render();
             return;
         }
@@ -116,12 +161,14 @@ internal sealed class RegionOverlay : LayeredWindow
         if (_grip != Grip.None)
         {
             _grip = Grip.None;
+            PlaceToolbar();
             return;
         }
         if (_drawFrom is null) return;
         _drawFrom = null;
         if (_selection is { } s && (s.Width < RegionMath.MinSide || s.Height < RegionMath.MinSide)) _selection = null;
         Render();
+        PlaceToolbar();
     }
 
     protected override bool IsInputKey(Keys keyData) =>
@@ -147,6 +194,7 @@ internal sealed class RegionOverlay : LayeredWindow
         if (_selection is not { } s) return;
         _selection = RegionMath.Nudge(s, dx, dy, _desktop);
         Render();
+        PlaceToolbar();
     }
 
     private void Finish(OverlayAction action)
@@ -159,6 +207,8 @@ internal sealed class RegionOverlay : LayeredWindow
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         _done.TrySetResult(new OverlayResult(OverlayAction.Cancel, default));
+        _toolbar.Close();
+        _toolbar.Dispose();
         base.OnFormClosed(e);
     }
 
@@ -183,7 +233,8 @@ internal sealed class RegionOverlay : LayeredWindow
             g.DrawRectangle(pen, Rectangle.Inflate(r, border, border));
         DrawGrips(g, r, scale);
         var even = RegionMath.Even(sel);
-        Label(g, font, $"{even.Width} x {even.Height}", new Point(r.X + (int)(24 * scale), r.Y - (int)(34 * scale)), center: false);
+        var shape = _ratio.Value is null ? "" : $"   {_ratio.Name}";
+        Label(g, font, $"{even.Width} x {even.Height}{shape}",new Point(r.X + (int)(24 * scale), r.Y - (int)(34 * scale)), center: false);
     }
 
     /// <summary>White squares on the corners and edge midpoints; a larger blue move grip with a four-way arrow on the upper-left corner.</summary>

@@ -79,6 +79,77 @@ public class TrayRegionTests
     }
 
     [Test]
+    public void A_ratio_snaps_to_the_same_area_rectangle_of_that_shape_around_the_same_centre()
+    {
+        var square = RegionMath.FitAspect(Sel, 1, Screen);
+        Assert.That(square.Width, Is.EqualTo(square.Height));
+        Assert.That((double)square.Area, Is.EqualTo((double)Sel.Area).Within(Sel.Area * 0.01));
+        Assert.That(square.X + square.Width / 2, Is.EqualTo(Sel.X + Sel.Width / 2).Within(1));
+        Assert.That(square.Y + square.Height / 2, Is.EqualTo(Sel.Y + Sel.Height / 2).Within(1));
+
+        var tall = RegionMath.FitAspect(Sel, 9.0 / 16, Screen);
+        Assert.That(tall.Height, Is.GreaterThan(tall.Width), "9:16 is a vertical frame");
+        Assert.That((double)tall.Width / tall.Height, Is.EqualTo(9.0 / 16).Within(0.01));
+        Assert.That(tall.Width % 2, Is.Zero);
+        Assert.That(tall.Height % 2, Is.Zero);
+
+        var half = RegionMath.FitAspect(Sel, 0.5, Screen);
+        Assert.That((double)half.Width / half.Height, Is.EqualTo(0.5).Within(0.01), "1:2 is twice as tall as wide");
+    }
+
+    [Test]
+    public void A_ratio_that_would_not_fit_shrinks_to_the_screen_and_stays_on_it()
+    {
+        var big = new PixelRect(100, 100, 1800, 900);
+        var tall = RegionMath.FitAspect(big, 9.0 / 16, Screen);
+        Assert.That(tall.Height, Is.LessThanOrEqualTo(Screen.Height));
+        Assert.That(Screen.Contains(tall), Is.True);
+        Assert.That((double)tall.Width / tall.Height, Is.EqualTo(9.0 / 16).Within(0.01));
+    }
+
+    [Test]
+    public void A_locked_ratio_survives_resizing_from_corners_and_edges()
+    {
+        var wide = new PixelRect(100, 100, 640, 360);
+        foreach (var grip in new[] { Grip.Right, Grip.Left, Grip.Top, Grip.Bottom, Grip.TopRight, Grip.BottomRight, Grip.BottomLeft })
+        {
+            var r = RegionMath.Drag(wide, grip, 80, 50, Screen, 16.0 / 9);
+            Assert.That((double)r.Width / r.Height, Is.EqualTo(16.0 / 9).Within(0.01), grip.ToString());
+            Assert.That(Screen.Contains(r), Is.True, grip.ToString());
+        }
+        var grown = RegionMath.Drag(wide, Grip.BottomRight, 160, 0, Screen, 16.0 / 9);
+        Assert.That((grown.X, grown.Y), Is.EqualTo((100, 100)), "the opposite corner stays put");
+        Assert.That(grown.Width, Is.EqualTo(800));
+        var huge = RegionMath.Drag(wide, Grip.BottomRight, 5000, 5000, Screen, 16.0 / 9);
+        Assert.That(huge.Bottom, Is.LessThanOrEqualTo(Screen.Bottom));
+        Assert.That(huge.Right, Is.LessThanOrEqualTo(Screen.Right));
+    }
+
+    [Test]
+    public void Drawing_with_a_locked_ratio_grows_from_the_first_point_toward_the_pointer()
+    {
+        Assert.That(RegionMath.FromCorners(100, 100, 260, 120, 16.0 / 9), Is.EqualTo(new PixelRect(100, 100, 160, 90)));
+        Assert.That(RegionMath.FromCorners(500, 500, 490, 340, 1), Is.EqualTo(new PixelRect(340, 340, 160, 160)));
+    }
+
+    [Test]
+    public void The_toolbar_goes_below_the_selection_then_above_it_then_inside()
+    {
+        Assert.That(RegionMath.ToolbarSpot(Sel, 300, 40, Screen, 10), Is.EqualTo((100, 410)));
+        var low = new PixelRect(100, 1000, 400, 70);
+        Assert.That(RegionMath.ToolbarSpot(low, 300, 40, Screen, 10), Is.EqualTo((100, 950)));
+        Assert.That(RegionMath.ToolbarSpot(new PixelRect(1800, 0, 120, 1080), 300, 40, Screen, 10), Is.EqualTo((1620, 1030)));
+    }
+
+    [Test]
+    public void Aspect_ratios_include_square_vertical_and_free()
+    {
+        Assert.That(AspectRatio.All.Select(r => r.Name), Is.SupersetOf(new[] { "Free", "16:9", "9:16", "1:1", "1:2" }));
+        Assert.That(AspectRatio.Find("9:16").Value, Is.EqualTo(9.0 / 16));
+        Assert.That(AspectRatio.Find("nonsense"), Is.EqualTo(AspectRatio.Free));
+    }
+
+    [Test]
     public void Even_rounds_sizes_down_for_the_encoder()
     {
         Assert.That(RegionMath.Even(new PixelRect(5, 7, 301, 199)), Is.EqualTo(new PixelRect(5, 7, 300, 198)));
