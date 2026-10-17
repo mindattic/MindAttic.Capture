@@ -10,7 +10,8 @@ internal sealed record OverlayResult(OverlayAction Action, PixelRect Region);
 
 /// <summary>
 /// Record Area's selector: dims every monitor in semi-transparent gray, and the dragged rectangle is a
-/// light-blue outlined, fully clear cut-out. Enter confirms, Esc cancels.
+/// light-blue outlined, fully clear cut-out. The upper-left grip moves it, the other grips resize it,
+/// arrow keys nudge it (Shift: 10 px). Enter confirms, Esc cancels.
 /// </summary>
 internal sealed class RegionOverlay : LayeredWindow
 {
@@ -23,6 +24,9 @@ internal sealed class RegionOverlay : LayeredWindow
     private readonly TaskCompletionSource<OverlayResult> _done = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private PixelRect? _selection;
     private Point? _drawFrom;
+    private Grip _grip;
+    private Point _gripFrom;
+    private PixelRect _gripStart;
 
     private RegionOverlay(PixelRect? initial)
     {
@@ -45,15 +49,34 @@ internal sealed class RegionOverlay : LayeredWindow
     internal static PixelRect VirtualDesktop() =>
         Desktop.GetMonitors().Aggregate(default(PixelRect), (all, m) => all.Union(m.Bounds));
 
+    private float DpiScale => DeviceDpi / 96f;
+
+    private int Reach => (int)Math.Round(8 * DpiScale);
+
     private Point ToScreen(Point client) => new(client.X + _desktop.X, client.Y + _desktop.Y);
 
     private Rectangle ToClient(PixelRect r) => new(r.X - _desktop.X, r.Y - _desktop.Y, r.Width, r.Height);
+
+    private Grip GripAt(Point screen) => _selection is { } s ? RegionMath.HitTest(s, screen.X, screen.Y, Reach) : Grip.None;
+
+    private static bool Inside(PixelRect r, Point p) => p.X > r.X && p.X < r.Right && p.Y > r.Y && p.Y < r.Bottom;
 
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);
         if (e.Button != MouseButtons.Left) return;
-        _drawFrom = ToScreen(e.Location);
+        var p = ToScreen(e.Location);
+        var grip = GripAt(p);
+        if (grip != Grip.None && _selection is { } s)
+        {
+            _grip = grip;
+            _gripFrom = p;
+            _gripStart = s;
+            return;
+        }
+        // A press inside the cut-out does nothing, so a stray click can't throw the selection away.
+        if (_selection is { } current && Inside(current, p)) return;
+        _drawFrom = p;
         _selection = null;
         Render();
     }
@@ -61,26 +84,69 @@ internal sealed class RegionOverlay : LayeredWindow
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
-        if (_drawFrom is not { } from) return;
-        var to = ToScreen(e.Location);
-        _selection = RegionMath.Clamp(RegionMath.FromCorners(from.X, from.Y, to.X, to.Y), _desktop);
-        Render();
+        var p = ToScreen(e.Location);
+        if (_grip != Grip.None)
+        {
+            _selection = RegionMath.Drag(_gripStart, _grip, p.X - _gripFrom.X, p.Y - _gripFrom.Y, _desktop);
+            Render();
+            return;
+        }
+        if (_drawFrom is { } from)
+        {
+            _selection = RegionMath.Clamp(RegionMath.FromCorners(from.X, from.Y, p.X, p.Y), _desktop);
+            Render();
+            return;
+        }
+        Cursor = CursorFor(GripAt(p), _selection is { } s && Inside(s, p));
     }
+
+    private static Cursor CursorFor(Grip grip, bool inside) => grip switch
+    {
+        Grip.Move => Cursors.SizeAll,
+        Grip.Top or Grip.Bottom => Cursors.SizeNS,
+        Grip.Left or Grip.Right => Cursors.SizeWE,
+        Grip.TopRight or Grip.BottomLeft => Cursors.SizeNESW,
+        Grip.BottomRight => Cursors.SizeNWSE,
+        _ => inside ? Cursors.Default : Cursors.Cross,
+    };
 
     protected override void OnMouseUp(MouseEventArgs e)
     {
         base.OnMouseUp(e);
+        if (_grip != Grip.None)
+        {
+            _grip = Grip.None;
+            return;
+        }
         if (_drawFrom is null) return;
         _drawFrom = null;
         if (_selection is { } s && (s.Width < RegionMath.MinSide || s.Height < RegionMath.MinSide)) _selection = null;
         Render();
     }
 
+    protected override bool IsInputKey(Keys keyData) =>
+        (keyData & Keys.KeyCode) is Keys.Left or Keys.Right or Keys.Up or Keys.Down || base.IsInputKey(keyData);
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (e.KeyCode == Keys.Escape) Finish(OverlayAction.Cancel);
-        else if (e.KeyCode == Keys.Enter && _selection is not null) Finish(OverlayAction.Confirm);
+        var step = e.Shift ? 10 : 1;
+        switch (e.KeyCode)
+        {
+            case Keys.Escape: Finish(OverlayAction.Cancel); break;
+            case Keys.Enter when _selection is not null: Finish(OverlayAction.Confirm); break;
+            case Keys.Left: Nudge(-step, 0); break;
+            case Keys.Right: Nudge(step, 0); break;
+            case Keys.Up: Nudge(0, -step); break;
+            case Keys.Down: Nudge(0, step); break;
+        }
+    }
+
+    private void Nudge(int dx, int dy)
+    {
+        if (_selection is not { } s) return;
+        _selection = RegionMath.Nudge(s, dx, dy, _desktop);
+        Render();
     }
 
     private void Finish(OverlayAction action)
@@ -99,12 +165,12 @@ internal sealed class RegionOverlay : LayeredWindow
     protected override void Draw(Graphics g)
     {
         g.Clear(Dim);
-        var scale = DeviceDpi / 96f;
+        var scale = DpiScale;
         using var font = new Font("Segoe UI", 14 * scale, FontStyle.Regular, GraphicsUnit.Pixel);
         g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
         if (_selection is not { } sel)
         {
-            Label(g, font, "Drag to select an area   Â·   Enter to confirm   Â·   Esc to cancel", PrimaryCenterTop(scale), center: true);
+            Label(g, font, "Drag to select an area  |  Enter to confirm  |  Esc to cancel", PrimaryCenterTop(scale), center: true);
             return;
         }
         var r = ToClient(sel);
@@ -115,8 +181,36 @@ internal sealed class RegionOverlay : LayeredWindow
         var border = Math.Max(2, (int)Math.Round(2 * scale));
         using (var pen = new Pen(Accent, border) { Alignment = PenAlignment.Inset })
             g.DrawRectangle(pen, Rectangle.Inflate(r, border, border));
+        DrawGrips(g, r, scale);
         var even = RegionMath.Even(sel);
-        Label(g, font, $"{even.Width} x {even.Height}", new Point(r.X, r.Y - (int)(30 * scale)), center: false);
+        Label(g, font, $"{even.Width} x {even.Height}", new Point(r.X + (int)(24 * scale), r.Y - (int)(34 * scale)), center: false);
+    }
+
+    /// <summary>White squares on the corners and edge midpoints; a larger blue move grip with a four-way arrow on the upper-left corner.</summary>
+    private static void DrawGrips(Graphics g, Rectangle r, float scale)
+    {
+        var half = (int)Math.Round(4 * scale);
+        using var outline = new Pen(Accent, Math.Max(1, scale));
+        foreach (var p in new[]
+                 {
+                     new Point(r.Right, r.Top), new Point(r.Right, r.Bottom), new Point(r.Left, r.Bottom),
+                     new Point(r.Left + r.Width / 2, r.Top), new Point(r.Left + r.Width / 2, r.Bottom),
+                     new Point(r.Left, r.Top + r.Height / 2), new Point(r.Right, r.Top + r.Height / 2),
+                 })
+        {
+            var box = new Rectangle(p.X - half, p.Y - half, half * 2, half * 2);
+            g.FillRectangle(Brushes.White, box);
+            g.DrawRectangle(outline, box);
+        }
+        var m = (int)Math.Round(10 * scale);
+        var move = new Rectangle(r.Left - m, r.Top - m, m * 2, m * 2);
+        using (var fill = new SolidBrush(Accent)) g.FillRectangle(fill, move);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using var arrow = new Pen(Color.White, Math.Max(1.5f, 1.5f * scale)) { StartCap = LineCap.ArrowAnchor, EndCap = LineCap.ArrowAnchor };
+        var inset = 3 * scale;
+        g.DrawLine(arrow, move.Left + inset, r.Top, move.Right - inset, r.Top);
+        g.DrawLine(arrow, r.Left, move.Top + inset, r.Left, move.Bottom - inset);
+        g.SmoothingMode = SmoothingMode.None;
     }
 
     private Point PrimaryCenterTop(float scale)
