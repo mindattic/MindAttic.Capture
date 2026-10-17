@@ -46,6 +46,14 @@ internal sealed class TraySettings
     /// <summary>Takes a screenshot of the armed target.</summary>
     public string ScreenshotHotkey { get; set; } = "Ctrl+Alt+Shift+S";
 
+    /// <summary>Where captures go; empty uses capture.json's outputRoot or the engine default (R:\MindAttic\Capture).</summary>
+    public string? OutputRoot { get; set; }
+
+    /// <summary>Files written for screen and app recordings and for a fresh area selection.</summary>
+    public VideoFormat DefaultVideo { get; set; } = VideoFormat.LosslessAndMp4;
+
+    public ImageFormat DefaultImage { get; set; } = ImageFormat.Png;
+
     public List<SavedRegion> Regions { get; set; } = [];
 
     /// <summary>Settings from <paramref name="path"/>; a missing file gets first-run defaults, a broken one is set aside as .bad.</summary>

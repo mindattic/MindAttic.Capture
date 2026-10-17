@@ -92,6 +92,39 @@ public class TraySettingsTests
         Assert.That(text, Does.StartWith("ffmpeg exited 1").And.Contain(@"the .log in R:\MindAttic\Capture\Desktop"));
     }
 
+    [TestCase(System.Windows.Forms.Keys.R | System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Alt | System.Windows.Forms.Keys.Shift, "Ctrl+Alt+Shift+R")]
+    [TestCase(System.Windows.Forms.Keys.F9, "F9")]
+    [TestCase(System.Windows.Forms.Keys.D5 | System.Windows.Forms.Keys.Control, "Ctrl+5")]
+    [TestCase(System.Windows.Forms.Keys.PrintScreen | System.Windows.Forms.Keys.Alt, "Alt+PrintScreen")]
+    [TestCase(System.Windows.Forms.Keys.PageDown | System.Windows.Forms.Keys.Shift, "Shift+PageDown")]
+    [TestCase(System.Windows.Forms.Keys.F24, "F24")]
+    public void A_pressed_key_becomes_hotkey_text_the_parser_reads_back(System.Windows.Forms.Keys keys, string expected)
+    {
+        var text = HotkeyText.From(keys);
+        Assert.That(text, Is.EqualTo(expected));
+        Assert.That(GlobalHotkeys.TryParse(text!, out _, out var vk), Is.True);
+        Assert.That(vk, Is.EqualTo((uint)(keys & System.Windows.Forms.Keys.KeyCode)));
+    }
+
+    [Test]
+    public void Modifiers_alone_and_unsupported_keys_are_not_hotkeys()
+    {
+        Assert.That(HotkeyText.From(System.Windows.Forms.Keys.ControlKey | System.Windows.Forms.Keys.Control), Is.Null);
+        Assert.That(HotkeyText.From(System.Windows.Forms.Keys.ShiftKey | System.Windows.Forms.Keys.Shift), Is.Null);
+        Assert.That(HotkeyText.From(System.Windows.Forms.Keys.OemPeriod), Is.Null);
+    }
+
+    [Test]
+    public void Output_folder_and_default_formats_round_trip()
+    {
+        var path = Path.Combine(_dir, "tray.json");
+        var settings = new TraySettings { OutputRoot = @"D:\Captures", DefaultVideo = VideoFormat.Mp4, DefaultImage = ImageFormat.Jpg, RecordHotkey = "F9" };
+        settings.Save(path);
+        var loaded = TraySettings.Load(path, Primary);
+        Assert.That((loaded.OutputRoot, loaded.DefaultVideo, loaded.DefaultImage, loaded.RecordHotkey),
+            Is.EqualTo((@"D:\Captures", VideoFormat.Mp4, ImageFormat.Jpg, "F9")));
+    }
+
     [Test]
     public void A_broken_settings_file_is_set_aside_and_defaults_are_used()
     {

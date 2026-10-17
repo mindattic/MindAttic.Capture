@@ -44,21 +44,77 @@ internal sealed class TrayApp : ApplicationContext
         UpdateIcon();
     }
 
-    private static CaptureOptions CreateOptions(string appName) =>
-        WindowsCaptureOptions.Create([], o =>
+    private CaptureOptions CreateOptions(string appName)
+    {
+        var options = WindowsCaptureOptions.Create([], o =>
         {
             o.AppName = appName;
             o.AppVersion = null;
         });
+        // After capture.json, so the folder picked in Settings wins.
+        if (!string.IsNullOrWhiteSpace(_settings.OutputRoot)) options.OutputRoot = _settings.OutputRoot;
+        return options;
+    }
 
     private void RegisterHotkeys()
+    {
+        if (TryRegisterHotkeys() is { } problem) ShowError("Hotkey not available", problem);
+    }
+
+    private string? TryRegisterHotkeys()
     {
         var problems = new[]
         {
             _hotkeys.Register(TrayHotkey.Record, _settings.RecordHotkey),
             _hotkeys.Register(TrayHotkey.Screenshot, _settings.ScreenshotHotkey),
         }.OfType<string>().ToList();
-        if (problems.Count > 0) ShowError("Hotkey not available", string.Join(Environment.NewLine, problems));
+        return problems.Count > 0 ? string.Join(Environment.NewLine, problems) : null;
+    }
+
+    private SettingsForm? _settingsForm;
+
+    private void ShowSettings()
+    {
+        if (_settingsForm is { IsDisposed: false })
+        {
+            _settingsForm.Activate();
+            return;
+        }
+        var current = new TrayPreferences(_settings.RecordHotkey, _settings.ScreenshotHotkey, _settings.OutputRoot,
+            _settings.DefaultVideo, _settings.DefaultImage, StartupRegistration.IsEnabled());
+        // Released while the window is open, so pressing the current keys binds them instead of firing them.
+        _hotkeys.Unregister(TrayHotkey.Record);
+        _hotkeys.Unregister(TrayHotkey.Screenshot);
+        var defaultOutput = WindowsCaptureOptions.Create([]).OutputRoot;
+        _settingsForm = new SettingsForm(current, defaultOutput, ApplyPreferences);
+        _settingsForm.FormClosed += (_, _) =>
+        {
+            _settingsForm = null;
+            RegisterHotkeys();
+            UpdateIcon();
+        };
+        _settingsForm.Show();
+        _settingsForm.Activate();
+    }
+
+    /// <summary>Checks the new hotkeys can be registered, then saves everything; returns why not, keeping the old settings.</summary>
+    private string? ApplyPreferences(TrayPreferences p)
+    {
+        var (oldRecord, oldShot) = (_settings.RecordHotkey, _settings.ScreenshotHotkey);
+        (_settings.RecordHotkey, _settings.ScreenshotHotkey) = (p.RecordHotkey, p.ScreenshotHotkey);
+        if (TryRegisterHotkeys() is { } problem)
+        {
+            (_settings.RecordHotkey, _settings.ScreenshotHotkey) = (oldRecord, oldShot);
+            _hotkeys.Unregister(TrayHotkey.Record);
+            _hotkeys.Unregister(TrayHotkey.Screenshot);
+            return problem;
+        }
+        _settings.OutputRoot = p.OutputRoot;
+        _settings.DefaultVideo = p.Video;
+        _settings.DefaultImage = p.Image;
+        _settings.Save(TraySettings.DefaultPath);
+        StartupRegistration.Set(p.StartWithWindows);
+        return null;
     }
 
     private void OnHotkey(TrayHotkey hotkey)
@@ -118,16 +174,17 @@ internal sealed class TrayApp : ApplicationContext
         _menu.Items.Add(new ToolStripMenuItem("Show Last Capture in Folder", null, (_, _) => ShowInExplorer(last!)) { Enabled = last is not null });
         _menu.Items.Add(new ToolStripMenuItem("Open Captures Folder", null, (_, _) => OpenCapturesFolder()));
         _menu.Items.Add(new ToolStripSeparator());
+        _menu.Items.Add(new ToolStripMenuItem("Settings...", null, (_, _) => ShowSettings()));
         _menu.Items.Add(new ToolStripMenuItem("Exit", null, (_, _) => _ = ExitAsync()));
     }
 
     private static string Ellipsize(string text) => (text.Length > 40 ? text[..37] + "..." : text).Replace("&", "&&");
 
-    private static ArmedTarget ScreenTarget(int index) =>
-        new(CaptureTarget.Monitor(index), DesktopApp, $"Screen {index + 1}", VideoFormat.LosslessAndMp4, ImageFormat.Png);
+    private ArmedTarget ScreenTarget(int index) =>
+        new(CaptureTarget.Monitor(index), DesktopApp, $"Screen {index + 1}", _settings.DefaultVideo, _settings.DefaultImage);
 
-    private static ArmedTarget AppTarget(WindowInfo w) =>
-        new(CaptureTarget.Window(w.Hwnd), w.ProcessName.Length > 0 ? w.ProcessName : "App", w.Title, VideoFormat.LosslessAndMp4, ImageFormat.Png);
+    private ArmedTarget AppTarget(WindowInfo w) =>
+        new(CaptureTarget.Window(w.Hwnd), w.ProcessName.Length > 0 ? w.ProcessName : "App", w.Title, _settings.DefaultVideo, _settings.DefaultImage);
 
     private static ArmedTarget AreaTarget(AreaChoice a, string? name = null)
     {
@@ -230,7 +287,7 @@ internal sealed class TrayApp : ApplicationContext
         }
     }
 
-    private static AreaChoice NewArea() => new(default, AspectRatio.Free, VideoFormat.LosslessAndMp4, ImageFormat.Png);
+    private AreaChoice NewArea() => new(default, AspectRatio.Free, _settings.DefaultVideo, _settings.DefaultImage);
 
     private void Arm(ArmedTarget target)
     {
@@ -341,7 +398,7 @@ internal sealed class TrayApp : ApplicationContext
 
     private static string Truncate(string text) => text.Length <= 127 ? text : text[..127];
 
-    private static void OpenCapturesFolder()
+    private void OpenCapturesFolder()
     {
         var root = CreateOptions(DesktopApp).OutputRoot;
         if (!Directory.Exists(root)) root = new CaptureOptions().FallbackRoot;
