@@ -49,10 +49,13 @@ internal sealed class TrayApp : ApplicationContext
         _menu.Items.Clear();
         var idle = _recorder.State == RecorderState.Idle;
 
+        var windows = AppWindowList.Get();
         _menu.Items.Add(MonitorMenu("Record Screen", m => _ = RecordAsync(CaptureTarget.Monitor(m.Index), DesktopApp, $"Screen {m.Index + 1}"), idle));
+        _menu.Items.Add(WindowMenu("Record App", windows, w => _ = RecordAsync(CaptureTarget.Window(w.Hwnd), AppName(w), w.Title), idle));
 
         var screenshot = new ToolStripMenuItem("Screenshot");
         screenshot.DropDownItems.Add(MonitorMenu("Screen", m => _ = ScreenshotAsync(CaptureTarget.Monitor(m.Index), DesktopApp, $"Screen {m.Index + 1}"), true));
+        screenshot.DropDownItems.Add(WindowMenu("App", windows, w => _ = ScreenshotAsync(CaptureTarget.Window(w.Hwnd), AppName(w), w.Title), true));
         _menu.Items.Add(screenshot);
 
         _menu.Items.Add(new ToolStripSeparator());
@@ -73,6 +76,17 @@ internal sealed class TrayApp : ApplicationContext
         }
         return menu;
     }
+
+    /// <summary>One item per open app window; recordings follow the window (Windows Graphics Capture) at its own size.</summary>
+    private static ToolStripMenuItem WindowMenu(string text, IReadOnlyList<WindowInfo> windows, Action<WindowInfo> pick, bool enabled)
+    {
+        var menu = new ToolStripMenuItem(text) { Enabled = enabled && windows.Count > 0 };
+        foreach (var w in windows)
+            menu.DropDownItems.Add(new ToolStripMenuItem(AppWindowList.MenuText(w), AppWindowList.Icon(w.Hwnd), (_, _) => pick(w)));
+        return menu;
+    }
+
+    private static string AppName(WindowInfo w) => w.ProcessName.Length > 0 ? w.ProcessName : "App";
 
     private string StopText() => _recorder.State == RecorderState.Recording
         ? $"Stop Recording ({FormatElapsed(_recorder.Elapsed)})"
