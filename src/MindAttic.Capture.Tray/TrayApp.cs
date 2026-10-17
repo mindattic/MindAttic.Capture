@@ -33,6 +33,12 @@ internal sealed class TrayApp : ApplicationContext
         _armed = ScreenTarget(Desktop.GetMonitors().FirstOrDefault(m => m.IsPrimary)?.Index ?? 0);
         _recorder = new Recorder(CreateOptions);
         _recorder.StateChanged += UpdateIcon;
+        // The valve has already stopped and exported the recording; stopping here reports it and returns to idle.
+        var ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
+        _recorder.LimitReached += reason => ui.Post(state =>
+        {
+            if (_recorder.State == RecorderState.Recording) _ = StopAsync();
+        }, null);
         _menu.Opening += (_, _) => BuildMenu();
         _icon = new NotifyIcon { Icon = TrayIcons.Idle, Text = "MindAttic Capture", ContextMenuStrip = _menu, Visible = true };
         _icon.MouseClick += OnIconClick;

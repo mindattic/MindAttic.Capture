@@ -11,6 +11,8 @@ internal sealed class Recorder : IAsyncDisposable
     private readonly Func<string, CaptureOptions> _options;
     private readonly Stopwatch _clock = new();
     private CaptureEngine? _engine;
+    // The recording the engine exported itself when its shut-off valve stopped it.
+    private volatile CaptureResult? _valveExport;
 
     public Recorder(Func<string, CaptureOptions> options) => _options = options;
 
@@ -23,6 +25,9 @@ internal sealed class Recorder : IAsyncDisposable
 
     public event Action? StateChanged;
 
+    /// <summary>The shut-off valve stopped the recording (a resource limit was crossed); raised on a background thread.</summary>
+    public event Action<string>? LimitReached;
+
     /// <summary>Starts recording <paramref name="target"/>; throws <see cref="CaptureException"/> when capture can't start.</summary>
     public async Task StartAsync(CaptureTarget target, string appName, string label, RecordingOptions recording)
     {
@@ -32,6 +37,12 @@ internal sealed class Recorder : IAsyncDisposable
         {
             _engine = await CaptureEngine.StartNewAsync(new DesktopCaptureHost(target), _options(appName));
             LastSessionFolder = _engine.SessionFolder;
+            _valveExport = null;
+            _engine.Captured += r =>
+            {
+                if (r.Kind == CaptureKind.Recording) _valveExport = r;
+            };
+            _engine.LimitReached += reason => LimitReached?.Invoke(reason);
             await _engine.StartRecordingAsync(label, recording);
             if (!_engine.IsRecording)
                 throw new CaptureException(CaptureError.CaptureFailed, $"Recording did not start; see the .log in {_engine.SessionFolder}.");
@@ -54,9 +65,10 @@ internal sealed class Recorder : IAsyncDisposable
         if (State != RecorderState.Recording || _engine is null) return null;
         SetState(RecorderState.Stopping);
         _clock.Stop();
+        CaptureResult result;
         try
         {
-            return await _engine.StopRecordingAsync();
+            result = await _engine.StopRecordingAsync();
         }
         finally
         {
@@ -64,6 +76,8 @@ internal sealed class Recorder : IAsyncDisposable
             _engine = null;
             SetState(RecorderState.Idle);
         }
+        // Stopped by the valve: the engine's own shutdown exported the recording, so this stop found nothing to stop.
+        return result.Skipped && _valveExport is { } exported ? exported : result;
     }
 
     /// <summary>A one-off still of <paramref name="target"/>.</summary>
