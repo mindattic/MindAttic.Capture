@@ -37,6 +37,8 @@ internal sealed class TraySettings
     private static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,
+        // Keeps "Ctrl+Alt+Shift+R" readable in the file instead of "Ctrl+Alt...": it is a local settings file, never HTML.
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         Converters = { new JsonStringEnumConverter() },
     };
 

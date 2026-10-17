@@ -46,6 +46,7 @@ public class TraySettingsTests
         Assert.That(choice.Ratio.Name, Is.EqualTo("16:9"));
         Assert.That((choice.Video, choice.Image), Is.EqualTo((VideoFormat.Gif, ImageFormat.Jpg)));
         Assert.That(File.ReadAllText(path), Does.Contain("\"Gif\""), "enums are stored by name so the file stays readable");
+        Assert.That(File.ReadAllText(path), Does.Contain("\"Ctrl+Alt+Shift+R\""), "hotkeys are not escaped");
     }
 
     [Test]
