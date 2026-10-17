@@ -17,6 +17,7 @@
     <ProjectReference Include="..\..\src\MindAttic.Capture.Windows\MindAttic.Capture.Windows.csproj" />
     <ProjectReference Include="..\..\src\MindAttic.Capture.Agent\MindAttic.Capture.Agent.csproj" />
     <ProjectReference Include="..\..\src\MindAttic.Capture.WebView2\MindAttic.Capture.WebView2.csproj" />
+    <ProjectReference Include="..\..\src\MindAttic.Capture.Tray\MindAttic.Capture.Tray.csproj" />
   </ItemGroup>
 
 </Project>

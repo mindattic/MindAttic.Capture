@@ -52,10 +52,12 @@ internal sealed class TrayApp : ApplicationContext
         var windows = AppWindowList.Get();
         _menu.Items.Add(MonitorMenu("Record Screen", m => _ = RecordAsync(CaptureTarget.Monitor(m.Index), DesktopApp, $"Screen {m.Index + 1}"), idle));
         _menu.Items.Add(WindowMenu("Record App", windows, w => _ = RecordAsync(CaptureTarget.Window(w.Hwnd), AppName(w), w.Title), idle));
+        _menu.Items.Add(new ToolStripMenuItem("Record Area...", null, (_, _) => _ = PickAreaAsync(record: true)) { Enabled = idle });
 
         var screenshot = new ToolStripMenuItem("Screenshot");
         screenshot.DropDownItems.Add(MonitorMenu("Screen", m => _ = ScreenshotAsync(CaptureTarget.Monitor(m.Index), DesktopApp, $"Screen {m.Index + 1}"), true));
         screenshot.DropDownItems.Add(WindowMenu("App", windows, w => _ = ScreenshotAsync(CaptureTarget.Window(w.Hwnd), AppName(w), w.Title), true));
+        screenshot.DropDownItems.Add(new ToolStripMenuItem("Area...", null, (_, _) => _ = PickAreaAsync(record: false)));
         _menu.Items.Add(screenshot);
 
         _menu.Items.Add(new ToolStripSeparator());
@@ -94,6 +96,19 @@ internal sealed class TrayApp : ApplicationContext
 
     internal static string FormatElapsed(TimeSpan t) =>
         t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes:00}:{t.Seconds:00}";
+
+    private async Task PickAreaAsync(bool record)
+    {
+        var picked = await RegionOverlay.PickAsync();
+        if (picked.Action == OverlayAction.Cancel) return;
+        // Let the compositor drop the overlay before the first frame is grabbed.
+        await Task.Delay(150);
+        var r = picked.Region;
+        var target = CaptureTarget.Region(r.X, r.Y, r.Width, r.Height);
+        var label = $"Area {r.Width}x{r.Height}";
+        if (record) await RecordAsync(target, DesktopApp, label);
+        else await ScreenshotAsync(target, DesktopApp, label);
+    }
 
     private async Task RecordAsync(CaptureTarget target, string appName, string label, RecordingOptions? recording = null)
     {
