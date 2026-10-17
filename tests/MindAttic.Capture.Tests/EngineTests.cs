@@ -100,6 +100,9 @@ public class EngineTests
     private CaptureOptions Options(Action<CaptureOptions>? configure = null)
     {
         var o = new CaptureOptions { OutputRoot = _root, AppName = "Test", Fps = 30, FfmpegPath = _ffmpeg! };
+        // The resource limits depend on the machine (a temp drive under 50 GB free trips the valve and stops every
+        // recording early); the valve tests use MaxDuration, which still applies with them off.
+        o.Limits.Enabled = false;
         configure?.Invoke(o);
         return o;
     }
