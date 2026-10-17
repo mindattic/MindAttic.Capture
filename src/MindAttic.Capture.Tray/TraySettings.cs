@@ -40,6 +40,12 @@ internal sealed class TraySettings
         Converters = { new JsonStringEnumConverter() },
     };
 
+    /// <summary>Starts recording the armed target, or stops the recording in progress.</summary>
+    public string RecordHotkey { get; set; } = "Ctrl+Alt+Shift+R";
+
+    /// <summary>Takes a screenshot of the armed target.</summary>
+    public string ScreenshotHotkey { get; set; } = "Ctrl+Alt+Shift+S";
+
     public List<SavedRegion> Regions { get; set; } = [];
 
     /// <summary>Settings from <paramref name="path"/>; a missing file gets first-run defaults, a broken one is set aside as .bad.</summary>

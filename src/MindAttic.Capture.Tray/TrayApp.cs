@@ -4,7 +4,13 @@ using MindAttic.Capture.Windows;
 
 namespace MindAttic.Capture.Tray;
 
-/// <summary>The tray icon, its menu and the one recording it controls.</summary>
+/// <summary>What the hotkeys capture: the last screen, app or area recorded, shot or armed from the selector.</summary>
+internal sealed record ArmedTarget(CaptureTarget Target, string App, string Label, VideoFormat Video, ImageFormat Image)
+{
+    public PixelRect? Area => Target is RegionTarget r ? r.Rect : null;
+}
+
+/// <summary>The tray icon, its menu, the hotkeys and the one recording they control.</summary>
 internal sealed class TrayApp : ApplicationContext
 {
     private const string DesktopApp = "Desktop";
@@ -13,19 +19,26 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ContextMenuStrip _menu = new();
     private readonly Recorder _recorder;
     private readonly System.Windows.Forms.Timer _tick = new() { Interval = 1000 };
-    private AreaChoice? _lastArea;
     private readonly TraySettings _settings;
+    private readonly HotkeyWindow _hotkeys = new();
+    private AreaChoice? _lastArea;
+    private ArmedTarget _armed;
+    private RecordingBorder? _border;
 
     public TrayApp()
     {
         _settings = TraySettings.Load(TraySettings.DefaultPath, PrimaryMonitor());
+        _armed = ScreenTarget(Desktop.GetMonitors().FirstOrDefault(m => m.IsPrimary)?.Index ?? 0);
         _recorder = new Recorder(CreateOptions);
         _recorder.StateChanged += UpdateIcon;
         _menu.Opening += (_, _) => BuildMenu();
         _icon = new NotifyIcon { Icon = TrayIcons.Idle, Text = "MindAttic Capture", ContextMenuStrip = _menu, Visible = true };
         _icon.MouseClick += OnIconClick;
         _tick.Tick += (_, _) => UpdateIcon();
+        _hotkeys.Pressed += OnHotkey;
+        RegisterHotkeys();
         BuildMenu();
+        UpdateIcon();
     }
 
     private static CaptureOptions CreateOptions(string appName) =>
@@ -34,6 +47,27 @@ internal sealed class TrayApp : ApplicationContext
             o.AppName = appName;
             o.AppVersion = null;
         });
+
+    private void RegisterHotkeys()
+    {
+        var problems = new[]
+        {
+            _hotkeys.Register(TrayHotkey.Record, _settings.RecordHotkey),
+            _hotkeys.Register(TrayHotkey.Screenshot, _settings.ScreenshotHotkey),
+        }.OfType<string>().ToList();
+        if (problems.Count > 0) ShowError("Hotkey not available", string.Join(Environment.NewLine, problems));
+    }
+
+    private void OnHotkey(TrayHotkey hotkey)
+    {
+        if (hotkey == TrayHotkey.Screenshot)
+        {
+            _ = ScreenshotAsync(_armed);
+            return;
+        }
+        if (_recorder.State == RecorderState.Recording) _ = StopAsync();
+        else if (_recorder.State == RecorderState.Idle) _ = RecordAsync(_armed);
+    }
 
     private void OnIconClick(object? sender, MouseEventArgs e)
     {
@@ -51,24 +85,48 @@ internal sealed class TrayApp : ApplicationContext
     {
         _menu.Items.Clear();
         var idle = _recorder.State == RecorderState.Idle;
+        var recording = _recorder.State == RecorderState.Recording;
+
+        _menu.Items.Add(new ToolStripMenuItem(recording ? StopText() : $"Record {Ellipsize(_armed.Label)}", null, (_, _) => OnHotkey(TrayHotkey.Record))
+        {
+            ShortcutKeyDisplayString = _settings.RecordHotkey, Enabled = idle || recording, Font = new Font(_menu.Font, FontStyle.Bold),
+        });
+        _menu.Items.Add(new ToolStripMenuItem($"Screenshot {Ellipsize(_armed.Label)}", null, (_, _) => OnHotkey(TrayHotkey.Screenshot))
+        {
+            ShortcutKeyDisplayString = _settings.ScreenshotHotkey,
+        });
+        _menu.Items.Add(new ToolStripSeparator());
 
         var windows = AppWindowList.Get();
-        _menu.Items.Add(MonitorMenu("Record Screen", m => _ = RecordAsync(CaptureTarget.Monitor(m.Index), DesktopApp, $"Screen {m.Index + 1}"), idle));
-        _menu.Items.Add(WindowMenu("Record App", windows, w => _ = RecordAsync(CaptureTarget.Window(w.Hwnd), AppName(w), w.Title), idle));
-        _menu.Items.Add(new ToolStripMenuItem("Record Area...", null, (_, _) => _ = PickAreaAsync(record: true)) { Enabled = idle });
+        _menu.Items.Add(MonitorMenu("Record Screen", m => _ = RecordAsync(ScreenTarget(m.Index)), idle));
+        _menu.Items.Add(WindowMenu("Record App", windows, w => _ = RecordAsync(AppTarget(w)), idle));
+        _menu.Items.Add(new ToolStripMenuItem("Record Area...", null, (_, _) => _ = PickAreaAsync()) { Enabled = idle });
 
         var screenshot = new ToolStripMenuItem("Screenshot");
-        screenshot.DropDownItems.Add(MonitorMenu("Screen", m => _ = ScreenshotAsync(CaptureTarget.Monitor(m.Index), DesktopApp, $"Screen {m.Index + 1}"), true));
-        screenshot.DropDownItems.Add(WindowMenu("App", windows, w => _ = ScreenshotAsync(CaptureTarget.Window(w.Hwnd), AppName(w), w.Title), true));
-        screenshot.DropDownItems.Add(new ToolStripMenuItem("Area...", null, (_, _) => _ = PickAreaAsync(record: false)));
+        screenshot.DropDownItems.Add(MonitorMenu("Screen", m => _ = ScreenshotAsync(ScreenTarget(m.Index)), true));
+        screenshot.DropDownItems.Add(WindowMenu("App", windows, w => _ = ScreenshotAsync(AppTarget(w)), true));
+        screenshot.DropDownItems.Add(new ToolStripMenuItem("Area...", null, (_, _) => _ = PickAreaAsync()));
         _menu.Items.Add(screenshot);
         _menu.Items.Add(RegionsMenu(idle));
 
         _menu.Items.Add(new ToolStripSeparator());
-        _menu.Items.Add(new ToolStripMenuItem(StopText(), null, (_, _) => _ = StopAsync()) { Enabled = _recorder.State == RecorderState.Recording });
         _menu.Items.Add(new ToolStripMenuItem("Open Captures Folder", null, (_, _) => OpenCapturesFolder()));
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(new ToolStripMenuItem("Exit", null, (_, _) => _ = ExitAsync()));
+    }
+
+    private static string Ellipsize(string text) => (text.Length > 40 ? text[..37] + "..." : text).Replace("&", "&&");
+
+    private static ArmedTarget ScreenTarget(int index) =>
+        new(CaptureTarget.Monitor(index), DesktopApp, $"Screen {index + 1}", VideoFormat.LosslessAndMp4, ImageFormat.Png);
+
+    private static ArmedTarget AppTarget(WindowInfo w) =>
+        new(CaptureTarget.Window(w.Hwnd), w.ProcessName.Length > 0 ? w.ProcessName : "App", w.Title, VideoFormat.LosslessAndMp4, ImageFormat.Png);
+
+    private static ArmedTarget AreaTarget(AreaChoice a, string? name = null)
+    {
+        var r = a.Region;
+        return new(CaptureTarget.Region(r.X, r.Y, r.Width, r.Height), DesktopApp, name ?? $"Area {r.Width}x{r.Height}", a.Video, a.Image);
     }
 
     /// <summary>One item per monitor ("Screen 1 (primary) 2560x1440"); a single monitor still gets a submenu so the shape never changes.</summary>
@@ -92,7 +150,7 @@ internal sealed class TrayApp : ApplicationContext
         return menu;
     }
 
-    /// <summary>Saved Regions: each one can be recorded or shot straight away, adjusted in the selector, or deleted.</summary>
+    /// <summary>Saved Regions: each one can be recorded or shot straight away, armed for the hotkeys, adjusted in the selector, or deleted.</summary>
     private ToolStripMenuItem RegionsMenu(bool idle)
     {
         var menu = new ToolStripMenuItem("Saved Regions") { Enabled = _settings.Regions.Count > 0 };
@@ -100,9 +158,10 @@ internal sealed class TrayApp : ApplicationContext
         {
             var r = region.Rect;
             var item = new ToolStripMenuItem($"{region.Name.Replace("&", "&&")}  ({r.Width}x{r.Height}, {region.Ratio})");
-            item.DropDownItems.Add(new ToolStripMenuItem("Record", null, (_, _) => _ = CaptureAreaAsync(Remember(region), record: true)) { Enabled = idle });
-            item.DropDownItems.Add(new ToolStripMenuItem("Screenshot", null, (_, _) => _ = CaptureAreaAsync(Remember(region), record: false)));
-            item.DropDownItems.Add(new ToolStripMenuItem("Adjust...", null, (_, _) => _ = PickAreaAsync(record: true, region.ToChoice())) { Enabled = idle });
+            item.DropDownItems.Add(new ToolStripMenuItem("Record", null, (_, _) => _ = RecordAsync(Remember(region))) { Enabled = idle });
+            item.DropDownItems.Add(new ToolStripMenuItem("Screenshot", null, (_, _) => _ = ScreenshotAsync(Remember(region))));
+            item.DropDownItems.Add(new ToolStripMenuItem("Arm for Hotkeys", null, (_, _) => Arm(Remember(region))));
+            item.DropDownItems.Add(new ToolStripMenuItem("Adjust...", null, (_, _) => _ = PickAreaAsync(region.ToChoice())) { Enabled = idle });
             item.DropDownItems.Add(new ToolStripSeparator());
             item.DropDownItems.Add(new ToolStripMenuItem("Delete", null, (_, _) => DeleteRegion(region.Name)));
             menu.DropDownItems.Add(item);
@@ -110,7 +169,11 @@ internal sealed class TrayApp : ApplicationContext
         return menu;
     }
 
-    private AreaChoice Remember(SavedRegion region) => (_lastArea = region.ToChoice());
+    private ArmedTarget Remember(SavedRegion region)
+    {
+        _lastArea = region.ToChoice();
+        return AreaTarget(_lastArea, region.Name);
+    }
 
     private IReadOnlyList<SavedRegion> SaveRegion(string name, AreaChoice choice)
     {
@@ -129,61 +192,79 @@ internal sealed class TrayApp : ApplicationContext
     private static PixelRect PrimaryMonitor() =>
         Desktop.GetMonitors().FirstOrDefault(m => m.IsPrimary)?.Bounds ?? new PixelRect(0, 0, 1920, 1080);
 
-    private static string AppName(WindowInfo w) => w.ProcessName.Length > 0 ? w.ProcessName : "App";
-
-    private string StopText() => _recorder.State == RecorderState.Recording
-        ? $"Stop Recording ({FormatElapsed(_recorder.Elapsed)})"
-        : "Stop Recording";
+    private string StopText() => $"Stop Recording ({FormatElapsed(_recorder.Elapsed)})";
 
     internal static string FormatElapsed(TimeSpan t) =>
         t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes:00}:{t.Seconds:00}";
 
-    /// <summary>Opens the area selector where the last one left off; Enter does what the menu item said, the toolbar buttons override it.</summary>
-    private async Task PickAreaAsync(bool record, AreaChoice? start = null)
+    /// <summary>
+    /// Opens the area selector where the last one left off. Enter arms the area for the hotkeys; the toolbar's
+    /// Record and Screenshot buttons capture it straight away.
+    /// </summary>
+    private async Task PickAreaAsync(AreaChoice? start = null)
     {
         var picked = await RegionOverlay.PickAsync(start ?? _lastArea ?? NewArea(), _settings.Regions, SaveRegion);
+        if (picked.Action == OverlayAction.Cancel) return;
         _lastArea = picked.Choice;
-        var action = picked.Action == OverlayAction.Confirm ? (record ? OverlayAction.Record : OverlayAction.Screenshot) : picked.Action;
-        if (action == OverlayAction.Cancel) return;
-        // Let the compositor drop the overlay before the first frame is grabbed.
-        await Task.Delay(150);
-        await CaptureAreaAsync(picked.Choice, action == OverlayAction.Record);
+        var target = AreaTarget(picked.Choice);
+        switch (picked.Action)
+        {
+            case OverlayAction.Confirm:
+                Arm(target);
+                break;
+            case OverlayAction.Record:
+                // Let the compositor drop the overlay before the first frame is grabbed.
+                await Task.Delay(150);
+                await RecordAsync(target);
+                break;
+            case OverlayAction.Screenshot:
+                await Task.Delay(150);
+                await ScreenshotAsync(target);
+                break;
+        }
     }
 
     private static AreaChoice NewArea() => new(default, AspectRatio.Free, VideoFormat.LosslessAndMp4, ImageFormat.Png);
 
-    private async Task CaptureAreaAsync(AreaChoice area, bool record)
+    private void Arm(ArmedTarget target)
     {
-        var r = area.Region;
-        var target = CaptureTarget.Region(r.X, r.Y, r.Width, r.Height);
-        var label = $"Area {r.Width}x{r.Height}";
-        if (record) await RecordAsync(target, DesktopApp, label, TrayFormats.Recording(area.Video));
-        else await ScreenshotAsync(target, DesktopApp, label, TrayFormats.Screenshot(area.Image));
+        _armed = target;
+        _icon.ShowBalloonTip(4000, $"Ready: {target.Label}", $"{_settings.RecordHotkey} starts and stops recording it; {_settings.ScreenshotHotkey} takes a screenshot.", ToolTipIcon.Info);
     }
 
-    private async Task RecordAsync(CaptureTarget target, string appName, string label, RecordingOptions? recording = null)
+    private async Task RecordAsync(ArmedTarget target)
     {
+        _armed = target;
         try
         {
-            await _recorder.StartAsync(target, appName, label, recording ?? new RecordingOptions { Preset = CapturePreset.Trailer });
+            await _recorder.StartAsync(target.Target, target.App, target.Label, TrayFormats.Recording(target.Video));
         }
         catch (CaptureException ex)
         {
             ShowError("Recording failed to start", ex.Message);
+            return;
+        }
+        if (target.Area is { } area)
+        {
+            _border = new RecordingBorder(area);
+            _border.Show();
         }
     }
 
     private async Task StopAsync()
     {
+        _border?.Close();
+        _border = null;
         var result = await _recorder.StopAsync();
         if (result is not null) Report(result);
     }
 
-    private async Task ScreenshotAsync(CaptureTarget target, string appName, string label, ScreenshotOptions? options = null)
+    private async Task ScreenshotAsync(ArmedTarget target)
     {
+        _armed = target;
         try
         {
-            Report(await _recorder.ScreenshotAsync(target, appName, label, options ?? new ScreenshotOptions()));
+            Report(await _recorder.ScreenshotAsync(target.Target, target.App, target.Label, TrayFormats.Screenshot(target.Image)));
         }
         catch (CaptureException ex)
         {
@@ -205,7 +286,7 @@ internal sealed class TrayApp : ApplicationContext
         {
             case RecorderState.Recording:
                 _icon.Icon = TrayIcons.Recording;
-                _icon.Text = Truncate($"Recording {FormatElapsed(_recorder.Elapsed)} - {_recorder.Label} (click to stop)");
+                _icon.Text = Truncate($"Recording {FormatElapsed(_recorder.Elapsed)} - {_recorder.Label} (click or {_settings.RecordHotkey} to stop)");
                 _tick.Start();
                 break;
             case RecorderState.Starting or RecorderState.Stopping:
@@ -215,7 +296,7 @@ internal sealed class TrayApp : ApplicationContext
                 break;
             default:
                 _icon.Icon = TrayIcons.Idle;
-                _icon.Text = "MindAttic Capture";
+                _icon.Text = Truncate($"MindAttic Capture - {_settings.RecordHotkey} records {_armed.Label}");
                 _tick.Stop();
                 break;
         }
@@ -234,6 +315,7 @@ internal sealed class TrayApp : ApplicationContext
     private async Task ExitAsync()
     {
         await StopAsync();
+        _hotkeys.Dispose();
         _icon.Visible = false;
         _icon.Dispose();
         _tick.Dispose();

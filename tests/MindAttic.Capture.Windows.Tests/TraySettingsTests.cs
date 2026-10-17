@@ -60,6 +60,18 @@ public class TraySettingsTests
     }
 
     [Test]
+    public void Default_hotkeys_parse_and_use_three_modifiers_so_they_do_not_steal_app_shortcuts()
+    {
+        var settings = new TraySettings();
+        foreach (var key in new[] { settings.RecordHotkey, settings.ScreenshotHotkey })
+        {
+            Assert.That(GlobalHotkeys.TryParse(key, out var mods, out _), Is.True, key);
+            Assert.That(mods, Is.EqualTo(1u | 2u | 4u), key);
+        }
+        Assert.That(settings.RecordHotkey, Is.Not.EqualTo(settings.ScreenshotHotkey));
+    }
+
+    [Test]
     public void A_broken_settings_file_is_set_aside_and_defaults_are_used()
     {
         var path = Path.Combine(_dir, "tray.json");
