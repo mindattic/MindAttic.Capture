@@ -4,9 +4,10 @@ using MindAttic.Capture.Windows;
 
 namespace MindAttic.Capture.Tray;
 
-internal enum OverlayAction { Cancel, Confirm }
+/// <summary>How the selector closed: Confirm is Enter (what it then does is up to whoever opened it).</summary>
+internal enum OverlayAction { Cancel, Confirm, Record, Screenshot }
 
-internal sealed record OverlayResult(OverlayAction Action, PixelRect Region);
+internal sealed record OverlayResult(OverlayAction Action, AreaChoice Choice);
 
 /// <summary>
 /// Record Area's selector: dims every monitor in semi-transparent gray, and the dragged rectangle is a
@@ -30,15 +31,19 @@ internal sealed class RegionOverlay : LayeredWindow
     private AspectRatio _ratio;
     private readonly RegionToolbar _toolbar;
 
-    private RegionOverlay(PixelRect? initial, AspectRatio ratio)
+    private RegionOverlay(AreaChoice start)
     {
         _desktop = VirtualDesktop();
-        _selection = initial is { } r ? RegionMath.Clamp(r, _desktop) : null;
-        _ratio = ratio;
+        _selection = start.Region.IsEmpty ? null : RegionMath.Clamp(start.Region, _desktop);
+        _ratio = start.Ratio;
         Cursor = Cursors.Cross;
         Text = "MindAttic Capture - select an area";
-        _toolbar = new RegionToolbar(ratio);
+        _toolbar = new RegionToolbar(start.Ratio, start.Video, start.Image);
         _toolbar.RatioPicked += PickRatio;
+        _toolbar.ActionPicked += action =>
+        {
+            if (action == OverlayAction.Cancel || _selection is not null) Finish(action);
+        };
         _toolbar.KeyForwarded += e =>
         {
             OnKeyDown(e);
@@ -47,10 +52,13 @@ internal sealed class RegionOverlay : LayeredWindow
         Place(_desktop);
     }
 
-    /// <summary>Shows the selector (optionally starting from <paramref name="initial"/>) and completes when the user confirms or cancels.</summary>
-    public static Task<OverlayResult> PickAsync(PixelRect? initial = null, AspectRatio? ratio = null)
+    /// <summary>
+    /// Shows the selector starting from <paramref name="start"/> (an empty region starts with nothing selected)
+    /// and completes when the user picks an action or cancels.
+    /// </summary>
+    public static Task<OverlayResult> PickAsync(AreaChoice start)
     {
-        var overlay = new RegionOverlay(initial, ratio ?? AspectRatio.Free);
+        var overlay = new RegionOverlay(start);
         overlay.Show();
         overlay.Activate();
         overlay.PlaceToolbar();
@@ -197,16 +205,18 @@ internal sealed class RegionOverlay : LayeredWindow
         PlaceToolbar();
     }
 
+    private AreaChoice Choice() =>
+        new(_selection is { } s ? RegionMath.Even(s) : default, _ratio, _toolbar.Video, _toolbar.Image);
+
     private void Finish(OverlayAction action)
     {
-        var region = _selection is { } s ? RegionMath.Even(s) : default;
-        _done.TrySetResult(new OverlayResult(_selection is null ? OverlayAction.Cancel : action, region));
+        _done.TrySetResult(new OverlayResult(_selection is null ? OverlayAction.Cancel : action, Choice()));
         Close();
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
-        _done.TrySetResult(new OverlayResult(OverlayAction.Cancel, default));
+        _done.TrySetResult(new OverlayResult(OverlayAction.Cancel, Choice()));
         _toolbar.Close();
         _toolbar.Dispose();
         base.OnFormClosed(e);

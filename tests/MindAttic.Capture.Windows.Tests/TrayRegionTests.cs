@@ -150,6 +150,18 @@ public class TrayRegionTests
     }
 
     [Test]
+    public void Video_formats_map_to_engine_outputs_without_downscaling()
+    {
+        var both = TrayFormats.Recording(VideoFormat.LosslessAndMp4);
+        Assert.That((both.Preset, both.Outputs), Is.EqualTo((CapturePreset.Trailer, (OutputFormats?)null)), "Trailer = lossless master + MP4 copy");
+        Assert.That(TrayFormats.Recording(VideoFormat.Lossless).Preset, Is.EqualTo(CapturePreset.Lossless));
+        var mp4 = TrayFormats.Recording(VideoFormat.Mp4);
+        Assert.That((mp4.Preset, mp4.Outputs, mp4.OutputHeight), Is.EqualTo((CapturePreset.Trailer, (OutputFormats?)OutputFormats.Mp4, (int?)null)));
+        Assert.That(TrayFormats.Recording(VideoFormat.Gif).Outputs, Is.EqualTo(OutputFormats.Gif));
+        Assert.That(TrayFormats.Screenshot(ImageFormat.Jpg).Format, Is.EqualTo(ImageFormat.Jpg));
+    }
+
+    [Test]
     public void Even_rounds_sizes_down_for_the_encoder()
     {
         Assert.That(RegionMath.Even(new PixelRect(5, 7, 301, 199)), Is.EqualTo(new PixelRect(5, 7, 300, 198)));

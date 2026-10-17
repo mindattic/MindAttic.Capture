@@ -13,6 +13,7 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ContextMenuStrip _menu = new();
     private readonly Recorder _recorder;
     private readonly System.Windows.Forms.Timer _tick = new() { Interval = 1000 };
+    private AreaChoice? _lastArea;
 
     public TrayApp()
     {
@@ -97,17 +98,27 @@ internal sealed class TrayApp : ApplicationContext
     internal static string FormatElapsed(TimeSpan t) =>
         t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes:00}:{t.Seconds:00}";
 
+    /// <summary>Opens the area selector where the last one left off; Enter does what the menu item said, the toolbar buttons override it.</summary>
     private async Task PickAreaAsync(bool record)
     {
-        var picked = await RegionOverlay.PickAsync();
-        if (picked.Action == OverlayAction.Cancel) return;
+        var picked = await RegionOverlay.PickAsync(_lastArea ?? NewArea());
+        _lastArea = picked.Choice;
+        var action = picked.Action == OverlayAction.Confirm ? (record ? OverlayAction.Record : OverlayAction.Screenshot) : picked.Action;
+        if (action == OverlayAction.Cancel) return;
         // Let the compositor drop the overlay before the first frame is grabbed.
         await Task.Delay(150);
-        var r = picked.Region;
+        await CaptureAreaAsync(picked.Choice, action == OverlayAction.Record);
+    }
+
+    private static AreaChoice NewArea() => new(default, AspectRatio.Free, VideoFormat.LosslessAndMp4, ImageFormat.Png);
+
+    private async Task CaptureAreaAsync(AreaChoice area, bool record)
+    {
+        var r = area.Region;
         var target = CaptureTarget.Region(r.X, r.Y, r.Width, r.Height);
         var label = $"Area {r.Width}x{r.Height}";
-        if (record) await RecordAsync(target, DesktopApp, label);
-        else await ScreenshotAsync(target, DesktopApp, label);
+        if (record) await RecordAsync(target, DesktopApp, label, TrayFormats.Recording(area.Video));
+        else await ScreenshotAsync(target, DesktopApp, label, TrayFormats.Screenshot(area.Image));
     }
 
     private async Task RecordAsync(CaptureTarget target, string appName, string label, RecordingOptions? recording = null)

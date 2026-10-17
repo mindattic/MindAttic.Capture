@@ -10,7 +10,10 @@ internal sealed class RegionToolbar : Form
     private readonly Dictionary<AspectRatio, Button> _ratioButtons = [];
     private readonly FlowLayoutPanel _rows;
 
-    public RegionToolbar(AspectRatio ratio)
+    private readonly ComboBox _video;
+    private readonly ComboBox _image;
+
+    public RegionToolbar(AspectRatio ratio, VideoFormat video, ImageFormat image)
     {
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
@@ -36,9 +39,40 @@ internal sealed class RegionToolbar : Form
             ratios.Controls.Add(button);
         }
         SetRatio(ratio);
+
+        var output = Row();
+        output.Controls.Add(Caption("Video"));
+        _video = Combo(TrayFormats.Videos.Select(TrayFormats.Name), TrayFormats.Videos.ToList().IndexOf(video), 130);
+        output.Controls.Add(_video);
+        output.Controls.Add(Caption("Image"));
+        _image = Combo(TrayFormats.Images.Select(TrayFormats.Name), Math.Max(0, TrayFormats.Images.ToList().IndexOf(image)), 70);
+        output.Controls.Add(_image);
+        var record = MakeButton("Record", () => ActionPicked?.Invoke(OverlayAction.Record));
+        record.BackColor = Color.FromArgb(200, 40, 40);
+        output.Controls.Add(record);
+        output.Controls.Add(MakeButton("Screenshot", () => ActionPicked?.Invoke(OverlayAction.Screenshot)));
+        output.Controls.Add(MakeButton("Cancel", () => ActionPicked?.Invoke(OverlayAction.Cancel)));
     }
 
     public event Action<AspectRatio>? RatioPicked;
+
+    public event Action<OverlayAction>? ActionPicked;
+
+    public VideoFormat Video => TrayFormats.Videos[Math.Max(0, _video.SelectedIndex)];
+
+    public ImageFormat Image => TrayFormats.Images[Math.Max(0, _image.SelectedIndex)];
+
+    private static ComboBox Combo(IEnumerable<string> items, int selected, int width)
+    {
+        var combo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, Width = width, Margin = new Padding(2, 3, 8, 2),
+            BackColor = ButtonBack, ForeColor = Color.White, TabStop = false,
+        };
+        combo.Items.AddRange(items.Cast<object>().ToArray());
+        combo.SelectedIndex = Math.Max(0, selected);
+        return combo;
+    }
 
     /// <summary>Keys pressed while the toolbar has focus (Esc, Enter, arrows) belong to the selector.</summary>
     public event Action<KeyEventArgs>? KeyForwarded;
