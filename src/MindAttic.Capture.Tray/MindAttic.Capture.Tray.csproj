@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- PerMonitorV2: every coordinate the tray and the area selector handle is a physical pixel, matching CaptureTarget. -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AssemblyName>capture-tray</AssemblyName>
+    <RootNamespace>MindAttic.Capture.Tray</RootNamespace>
+    <Product>MindAttic.Capture.Tray</Product>
+    <!-- HOUSE-LAW-1: whole-number versions only; bump the major. -->
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MindAttic.Capture.Windows\MindAttic.Capture.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MindAttic.Capture.Windows.Tests" />
+  </ItemGroup>
+
+</Project>

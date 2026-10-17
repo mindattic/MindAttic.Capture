@@ -3,6 +3,7 @@
     <Project Path="src/MindAttic.Capture/MindAttic.Capture.csproj" />
     <Project Path="src/MindAttic.Capture.Windows/MindAttic.Capture.Windows.csproj" />
     <Project Path="src/MindAttic.Capture.Agent/MindAttic.Capture.Agent.csproj" />
+    <Project Path="src/MindAttic.Capture.Tray/MindAttic.Capture.Tray.csproj" />
     <Project Path="src/MindAttic.Capture.Wpf/MindAttic.Capture.Wpf.csproj" />
     <Project Path="src/MindAttic.Capture.WebView2/MindAttic.Capture.WebView2.csproj" />
   </Folder>
