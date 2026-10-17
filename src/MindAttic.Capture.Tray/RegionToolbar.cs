@@ -52,6 +52,57 @@ internal sealed class RegionToolbar : Form
         output.Controls.Add(record);
         output.Controls.Add(MakeButton("Screenshot", () => ActionPicked?.Invoke(OverlayAction.Screenshot)));
         output.Controls.Add(MakeButton("Cancel", () => ActionPicked?.Invoke(OverlayAction.Cancel)));
+
+        var regions = Row();
+        regions.Controls.Add(Caption("Saved"));
+        _saved = Combo([], -1, 150);
+        _saved.SelectionChangeCommitted += (_, _) =>
+        {
+            if (_saved.SelectedItem is string name && _regions.FirstOrDefault(r => r.Name == name) is { } region) RegionPicked?.Invoke(region);
+        };
+        regions.Controls.Add(_saved);
+        regions.Controls.Add(Caption("Save as"));
+        _name = new TextBox { Width = 150, BackColor = ButtonBack, ForeColor = Color.White, BorderStyle = BorderStyle.FixedSingle, Margin = new Padding(2, 4, 2, 2) };
+        regions.Controls.Add(_name);
+        regions.Controls.Add(MakeButton("Save", SaveName));
+    }
+
+    private readonly ComboBox _saved;
+    private readonly TextBox _name;
+    private IReadOnlyList<SavedRegion> _regions = [];
+
+    /// <summary>A saved region was picked from the list.</summary>
+    public event Action<SavedRegion>? RegionPicked;
+
+    /// <summary>Save the current area under this name.</summary>
+    public event Action<string>? SaveRequested;
+
+    public void SetRegions(IReadOnlyList<SavedRegion> regions, string? selected = null)
+    {
+        _regions = regions;
+        _saved.Items.Clear();
+        _saved.Items.AddRange(regions.Select(r => (object)r.Name).ToArray());
+        _saved.SelectedItem = selected;
+        _saved.Enabled = regions.Count > 0;
+    }
+
+    /// <summary>Shows the format choices of a picked region.</summary>
+    public void SetFormats(VideoFormat video, ImageFormat image)
+    {
+        _video.SelectedIndex = TrayFormats.Videos.ToList().IndexOf(video);
+        _image.SelectedIndex = Math.Max(0, TrayFormats.Images.ToList().IndexOf(image));
+    }
+
+    private void SaveName()
+    {
+        var name = _name.Text.Trim();
+        if (name.Length == 0)
+        {
+            _name.Focus();
+            return;
+        }
+        SaveRequested?.Invoke(name);
+        _name.Clear();
     }
 
     public event Action<AspectRatio>? RatioPicked;
@@ -70,7 +121,7 @@ internal sealed class RegionToolbar : Form
             BackColor = ButtonBack, ForeColor = Color.White, TabStop = false,
         };
         combo.Items.AddRange(items.Cast<object>().ToArray());
-        combo.SelectedIndex = Math.Max(0, selected);
+        if (combo.Items.Count > 0) combo.SelectedIndex = Math.Clamp(selected, 0, combo.Items.Count - 1);
         return combo;
     }
 
@@ -124,6 +175,12 @@ internal sealed class RegionToolbar : Form
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+        if (ActiveControl == _name && e.KeyCode == Keys.Enter)
+        {
+            SaveName();
+            e.Handled = e.SuppressKeyPress = true;
+            return;
+        }
         if (ActiveControl is TextBox or ComboBox && e.KeyCode is not (Keys.Escape or Keys.Enter)) return;
         KeyForwarded?.Invoke(e);
         e.Handled = true;

@@ -31,7 +31,7 @@ internal sealed class RegionOverlay : LayeredWindow
     private AspectRatio _ratio;
     private readonly RegionToolbar _toolbar;
 
-    private RegionOverlay(AreaChoice start)
+    private RegionOverlay(AreaChoice start, IReadOnlyList<SavedRegion> regions, Func<string, AreaChoice, IReadOnlyList<SavedRegion>> save)
     {
         _desktop = VirtualDesktop();
         _selection = start.Region.IsEmpty ? null : RegionMath.Clamp(start.Region, _desktop);
@@ -44,6 +44,21 @@ internal sealed class RegionOverlay : LayeredWindow
         {
             if (action == OverlayAction.Cancel || _selection is not null) Finish(action);
         };
+        _toolbar.SetRegions(regions);
+        _toolbar.RegionPicked += region =>
+        {
+            _ratio = AspectRatio.Find(region.Ratio);
+            _toolbar.SetRatio(_ratio);
+            _toolbar.SetFormats(region.Video, region.Image);
+            _selection = RegionMath.Clamp(region.Rect, _desktop);
+            Render();
+            PlaceToolbar();
+        };
+        _toolbar.SaveRequested += name =>
+        {
+            if (_selection is null) return;
+            _toolbar.SetRegions(save(name, Choice()), name);
+        };
         _toolbar.KeyForwarded += e =>
         {
             OnKeyDown(e);
@@ -54,11 +69,12 @@ internal sealed class RegionOverlay : LayeredWindow
 
     /// <summary>
     /// Shows the selector starting from <paramref name="start"/> (an empty region starts with nothing selected)
-    /// and completes when the user picks an action or cancels.
+    /// and completes when the user picks an action or cancels. The toolbar lists <paramref name="regions"/>;
+    /// <paramref name="save"/> stores the current area under a name and returns the updated list.
     /// </summary>
-    public static Task<OverlayResult> PickAsync(AreaChoice start)
+    public static Task<OverlayResult> PickAsync(AreaChoice start, IReadOnlyList<SavedRegion> regions, Func<string, AreaChoice, IReadOnlyList<SavedRegion>> save)
     {
-        var overlay = new RegionOverlay(start);
+        var overlay = new RegionOverlay(start, regions, save);
         overlay.Show();
         overlay.Activate();
         overlay.PlaceToolbar();

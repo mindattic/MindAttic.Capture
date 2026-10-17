@@ -14,9 +14,11 @@ internal sealed class TrayApp : ApplicationContext
     private readonly Recorder _recorder;
     private readonly System.Windows.Forms.Timer _tick = new() { Interval = 1000 };
     private AreaChoice? _lastArea;
+    private readonly TraySettings _settings;
 
     public TrayApp()
     {
+        _settings = TraySettings.Load(TraySettings.DefaultPath, PrimaryMonitor());
         _recorder = new Recorder(CreateOptions);
         _recorder.StateChanged += UpdateIcon;
         _menu.Opening += (_, _) => BuildMenu();
@@ -60,6 +62,7 @@ internal sealed class TrayApp : ApplicationContext
         screenshot.DropDownItems.Add(WindowMenu("App", windows, w => _ = ScreenshotAsync(CaptureTarget.Window(w.Hwnd), AppName(w), w.Title), true));
         screenshot.DropDownItems.Add(new ToolStripMenuItem("Area...", null, (_, _) => _ = PickAreaAsync(record: false)));
         _menu.Items.Add(screenshot);
+        _menu.Items.Add(RegionsMenu(idle));
 
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(new ToolStripMenuItem(StopText(), null, (_, _) => _ = StopAsync()) { Enabled = _recorder.State == RecorderState.Recording });
@@ -89,6 +92,43 @@ internal sealed class TrayApp : ApplicationContext
         return menu;
     }
 
+    /// <summary>Saved Regions: each one can be recorded or shot straight away, adjusted in the selector, or deleted.</summary>
+    private ToolStripMenuItem RegionsMenu(bool idle)
+    {
+        var menu = new ToolStripMenuItem("Saved Regions") { Enabled = _settings.Regions.Count > 0 };
+        foreach (var region in _settings.Regions)
+        {
+            var r = region.Rect;
+            var item = new ToolStripMenuItem($"{region.Name.Replace("&", "&&")}  ({r.Width}x{r.Height}, {region.Ratio})");
+            item.DropDownItems.Add(new ToolStripMenuItem("Record", null, (_, _) => _ = CaptureAreaAsync(Remember(region), record: true)) { Enabled = idle });
+            item.DropDownItems.Add(new ToolStripMenuItem("Screenshot", null, (_, _) => _ = CaptureAreaAsync(Remember(region), record: false)));
+            item.DropDownItems.Add(new ToolStripMenuItem("Adjust...", null, (_, _) => _ = PickAreaAsync(record: true, region.ToChoice())) { Enabled = idle });
+            item.DropDownItems.Add(new ToolStripSeparator());
+            item.DropDownItems.Add(new ToolStripMenuItem("Delete", null, (_, _) => DeleteRegion(region.Name)));
+            menu.DropDownItems.Add(item);
+        }
+        return menu;
+    }
+
+    private AreaChoice Remember(SavedRegion region) => (_lastArea = region.ToChoice());
+
+    private IReadOnlyList<SavedRegion> SaveRegion(string name, AreaChoice choice)
+    {
+        _settings.Upsert(SavedRegion.From(name, choice));
+        _settings.Save(TraySettings.DefaultPath);
+        return _settings.Regions;
+    }
+
+    private void DeleteRegion(string name)
+    {
+        if (MessageBox.Show($"Delete the saved region \"{name}\"?", "MindAttic Capture", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        _settings.Remove(name);
+        _settings.Save(TraySettings.DefaultPath);
+    }
+
+    private static PixelRect PrimaryMonitor() =>
+        Desktop.GetMonitors().FirstOrDefault(m => m.IsPrimary)?.Bounds ?? new PixelRect(0, 0, 1920, 1080);
+
     private static string AppName(WindowInfo w) => w.ProcessName.Length > 0 ? w.ProcessName : "App";
 
     private string StopText() => _recorder.State == RecorderState.Recording
@@ -99,9 +139,9 @@ internal sealed class TrayApp : ApplicationContext
         t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes:00}:{t.Seconds:00}";
 
     /// <summary>Opens the area selector where the last one left off; Enter does what the menu item said, the toolbar buttons override it.</summary>
-    private async Task PickAreaAsync(bool record)
+    private async Task PickAreaAsync(bool record, AreaChoice? start = null)
     {
-        var picked = await RegionOverlay.PickAsync(_lastArea ?? NewArea());
+        var picked = await RegionOverlay.PickAsync(start ?? _lastArea ?? NewArea(), _settings.Regions, SaveRegion);
         _lastArea = picked.Choice;
         var action = picked.Action == OverlayAction.Confirm ? (record ? OverlayAction.Record : OverlayAction.Screenshot) : picked.Action;
         if (action == OverlayAction.Cancel) return;
