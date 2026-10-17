@@ -7,6 +7,8 @@
     <!-- PerMonitorV2: every coordinate the tray and the area selector handle is a physical pixel, matching CaptureTarget. -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyName>capture-tray</AssemblyName>
+    <!-- The exe's own icon, the MindAttic Capture logo: what the desktop shortcut install.ps1 makes shows. -->
+    <ApplicationIcon>..\..\assets\logo.ico</ApplicationIcon>
     <RootNamespace>MindAttic.Capture.Tray</RootNamespace>
     <Product>MindAttic.Capture.Tray</Product>
     <!-- HOUSE-LAW-1: whole-number versions only; bump the major. -->

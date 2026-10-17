@@ -1,4 +1,5 @@
-# Publishes the capture agent (capture.exe) and the tray recorder (capture-tray.exe) to %LOCALAPPDATA%\MindAttic\Capture\bin.
+# Publishes the capture agent (capture.exe) and the tray recorder (capture-tray.exe) to %LOCALAPPDATA%\MindAttic\Capture\bin,
+# and puts a "MindAttic Capture" shortcut to the tray recorder on the desktop.
 # Apps find the agent there to export sessions after they exit; add the folder to PATH to use `capture` anywhere.
 # Safe while an export is running: a file in use is renamed to *.old (the running process keeps it) and replaced;
 # leftover *.old files are removed on the next install once nothing uses them.
@@ -31,6 +32,15 @@ try {
 } finally {
     Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
 }
+# A desktop icon that launches the tray recorder (re-created each install so it always points at this copy).
+$tray = Join-Path $bin 'capture-tray.exe'
+$shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'MindAttic Capture.lnk'))
+$shortcut.TargetPath = $tray
+$shortcut.WorkingDirectory = $bin
+$shortcut.IconLocation = "$tray,0"
+$shortcut.Description = 'MindAttic Capture tray recorder'
+$shortcut.Save()
+Write-Host "Desktop shortcut: MindAttic Capture -> $tray"
 if ($AddToPath) {
     $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
     if (($userPath -split ';') -notcontains $bin) {
