@@ -6,7 +6,7 @@ layer: stories
 status: living
 updated: 2026-10-12
 ---
-<!-- GENERATED from MindAttic.Workflow/data/workflow.db by `workflow db render`. Do not edit: this file is rewritten from the database; change stories and tickets with the workflow CLI. -->
+<!-- GENERATED from MindAttic.Tickets/data/Tickets.db by `tickets db render`. Do not edit: this file is rewritten from the database; change stories and tickets with the tickets CLI. -->
 
 # MindAttic.Capture — User Stories
 > ✅ done (shipped & tested) · 🟡 partial · ⬜ planned. Every ✅ cites the test.
@@ -66,3 +66,6 @@ _Nothing recorded yet._
 | M.CAPT-T30 | 2026-10-17 | feature | open | Stitch a session's screenshot PNGs into an animated GIF: '-capture screen 15m 5h gif' makes {RepoName}_{start}.gif from the PNGs at session end, and 'capture gif <folder>' does it for an existing folder; ffmpeg with a generated palette, a frame rate of 2 or 4 fps (--fps, default 2), the last frame held 2s, width capped (default 1280) to keep it small, each frame stamped with its time. Also callable from code (e.g. CaptureEngine.ExportGif(frames, fps)) so a host app can roll its own timelapses. Tests: frame order, a missing or odd-sized frame, a session that ends early | — |
 | M.CAPT-T31 | 2026-10-17 | feature | closed | Desktop icon for the tray recorder: install.ps1 puts a 'MindAttic Capture' shortcut to capture-tray.exe on the desktop (re-created each install), and the exe embeds assets/logo.ico so the shortcut shows the logo | tools/install.ps1 |
 | M.CAPT-T32 | 2026-10-18 | docs | closed | Update USER_STORIES.md | — |
+| M.CAPT-T33 | 2026-10-19 | chore | open | Convert tracked source files to LF line endings via .gitattributes, per HOUSE-LAW-13 (low priority) | — |
+| M.CAPT-T34 | 2026-10-19 | feature | open | Replace the tray icon with a normal windowed app you pin to Start: the user decided the tray (M.CAPT-T17) was a mistake, since a pinned Start icon is easier than a pile of always-running tray icons. Capture opens a regular window with the same actions (Record Screen / App / Area, Screenshot, saved regions, Stop, Settings), shows recording state in its taskbar button instead of the tray icon, and exits when closed. Drop the NotifyIcon and the start-with-Windows default; the global hotkeys work only while it is open | M.CAPT-US-T1 M.CAPT-T17 |
+| M.CAPT-T35 | 2026-10-20 | docs | open | Publish MindAttic.Capture docs to GitHub Pages via the shared Toolkit DocFX pipeline: run adopt-docs-site.ps1 (README.md as home page, docs/*.md as articles, API reference only where the code builds in CI), enable Pages with build_type=workflow, set the repo homepage URL, retire tools/build-readme.ps1 and README.htm, confirm the docs Actions run is green and https://mindattic.github.io/MindAttic.Capture/ returns 200. Depends on MAT-T8. | — |
