@@ -405,7 +405,9 @@ public sealed class CaptureEngine : ICapture
         var at = DateTimeOffset.Now;
         var tape = await EnsureTapeAsync(_shutdown.Token).ConfigureAwait(false);
         if (tape is null) return Complete(CaptureResult.Fail(kind, tag, "The capture tape is not running.", at), count: false);
-        var t = anchor ?? tape.Now;
+        // An event's tape time is on the tape that was running when it was raised; if that tape was replaced since, its time
+        // can lie beyond this one's clock, and waiting for it would stall the export. Never anchor in this tape's future.
+        var t = anchor is { } a ? Math.Min(a, tape.Now) : tape.Now;
         var start = Math.Max(0, t - before.TotalSeconds);
         var end = t + after.TotalSeconds;
         // Footage before this floor is already swept by retention (or never kept, without ReplayArmed/a covering
