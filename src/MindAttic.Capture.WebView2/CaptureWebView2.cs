@@ -46,7 +46,7 @@ public static class CaptureWebView2
             try
             {
                 using var doc = JsonDocument.Parse(e.WebMessageAsJson);
-                if (!doc.RootElement.TryGetProperty("mindatticCapture", out var r) || r.ValueKind != JsonValueKind.Object) return;
+                if (doc.RootElement.ValueKind != JsonValueKind.Object || !doc.RootElement.TryGetProperty("mindatticCapture", out var r) || r.ValueKind != JsonValueKind.Object) return;
                 request = r.Clone();
             }
             catch (JsonException)
