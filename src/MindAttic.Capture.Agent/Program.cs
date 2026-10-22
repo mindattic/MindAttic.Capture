@@ -232,8 +232,13 @@ namespace MindAttic.Capture.Agent
 
         private static async Task<int> RecoverAsync(AgentArgs args, ICaptureLog log)
         {
-            var root = args.Positional.FirstOrDefault() ?? args.Get("out") ?? new CaptureOptions().OutputRoot;
-            var n = await SessionFinalizer.RecoverAsync(root, new SystemTextCaptureJson(), log, CancellationToken.None);
+            var explicitRoot = args.Positional.FirstOrDefault() ?? args.Get("out");
+            var defaults = new CaptureOptions();
+            // Sessions are staged under the fallback root when the output drive was missing, so scan that too.
+            var roots = explicitRoot is not null ? [explicitRoot] : new[] { defaults.OutputRoot, defaults.FallbackRoot };
+            var n = 0;
+            foreach (var root in roots.Distinct(StringComparer.OrdinalIgnoreCase))
+                n += await SessionFinalizer.RecoverAsync(root, new SystemTextCaptureJson(), log, CancellationToken.None);
             Console.Error.WriteLine($"Recovered {n} session(s).");
             return 0;
         }
