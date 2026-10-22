@@ -190,6 +190,20 @@ public class EngineTests
     }
 
     [Test]
+    public async Task Retention_floor_covers_debounced_clip_and_replay_rules()
+    {
+        var options = Options(o =>
+        {
+            o.Rules.Add(new Triggers.TriggerRuleConfig { On = "a", Action = "clip", Duration = "1s", Debounce = "30s" });
+            o.Rules.Add(new Triggers.TriggerRuleConfig { On = "b", Action = "replay", Before = "5s", After = "1s", Debounce = "20s" });
+        });
+        await using var engine = await CaptureEngine.StartNewAsync(new SyntheticHost(), options);
+        await Task.Delay(4000);
+        // Longest wait is the clip's 30s debounce (vs replay's 5s + 20s): the floor stays at tape start.
+        Assert.That(engine.KeepFrom(), Is.LessThanOrEqualTo(0));
+    }
+
+    [Test]
     public async Task Paused_footage_is_left_out_and_markers_become_chapters()
     {
         await using var engine = await CaptureEngine.StartNewAsync(new SyntheticHost(), Options());

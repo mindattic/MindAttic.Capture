@@ -644,15 +644,21 @@ public sealed class CaptureEngine : ICapture
     }
 
     /// <summary>Retention floor: the replay window and every active lease.</summary>
-    private double KeepFrom()
+    internal double KeepFrom()
     {
         var tape = _tape;
         if (tape is null) return 0;
         // Keep enough for the longest replay rule too: its lease is only taken when it fires, by which time
         // older segments would already be gone.
         var back = _options.ReplayArmed ? _options.ReplayLength.TotalSeconds : 0;
+        // A debounced rule anchors at the event's tape time but only fires (and leases) DebounceTime later, so the
+        // footage from the event onward (clip) or from Before ahead of it (replay) must survive that wait too.
         foreach (var rule in _triggers.Rules)
-            if (rule.Action == TriggerAction.Replay) back = Math.Max(back, rule.Before.TotalSeconds);
+        {
+            if (rule.Action != TriggerAction.Replay && rule.Action != TriggerAction.Clip) continue;
+            var before = rule.Action == TriggerAction.Replay ? rule.Before.TotalSeconds : 0;
+            back = Math.Max(back, before + Math.Max(0, rule.DebounceTime.TotalSeconds));
+        }
         var floor = tape.Now - back - 2;
         foreach (var lease in _leases.Values) floor = Math.Min(floor, lease);
         return floor;
