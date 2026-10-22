@@ -416,6 +416,8 @@ internal sealed class TrayApp : ApplicationContext
     private async Task ExitAsync()
     {
         await StopAsync();
+        for (var waited = 0; _recorder.State is RecorderState.Starting or RecorderState.Stopping && waited < 300; waited++)
+            await Task.Delay(500);
         _hotkeys.Dispose();
         _icon.Visible = false;
         _icon.Dispose();
