@@ -56,53 +56,62 @@ internal sealed class CaptureTape : IAsyncDisposable
         state.Height = source.Height;
         state.Source = source.Description;
         CaptureTape tape;
-        switch (source)
+        try
         {
-            case NativeVideoSource native:
+            switch (source)
             {
-                CaptureException? last = null;
-                FfmpegProcess? ffmpeg = null;
-                foreach (var candidate in native.Candidates)
+                case NativeVideoSource native:
                 {
+                    CaptureException? last = null;
+                    FfmpegProcess? ffmpeg = null;
+                    foreach (var candidate in native.Candidates)
+                    {
+                        try
+                        {
+                            ffmpeg = await FfmpegProcess.StartAsync(state.FfmpegPath,
+                                FfmpegArgs.Tape(candidate.Args, state.Quality, state.Encoder, state.Fps, dir), dataStdin: false, log, ct).ConfigureAwait(false);
+                            state.Source = candidate.Name;
+                            break;
+                        }
+                        catch (CaptureException ex)
+                        {
+                            last = ex;
+                            log.Warn($"Video input {candidate.Name} failed; trying the next one. {LastLine(ex.Message)}");
+                        }
+                    }
+                    if (ffmpeg is null) throw last ?? new CaptureException(CaptureError.CaptureFailed, "No video input candidates.");
+                    tape = new CaptureTape(dir, state, ffmpeg, null, null, Stopwatch.StartNew(), log, json);
+                    break;
+                }
+                case PushVideoSource push:
+                {
+                    state.FixedTimestep = !push.RealTime;
+                    var ffmpeg = await FfmpegProcess.StartAsync(state.FfmpegPath,
+                        FfmpegArgs.Tape(FfmpegArgs.PushInput(push.Width, push.Height, state.Fps, push.RealTime), state.Quality, state.Encoder, state.Fps, dir),
+                        dataStdin: true, log, ct).ConfigureAwait(false);
+                    var clock = Stopwatch.StartNew();
+                    var sink = new FrameSink(ffmpeg.DataStdin, push.Width * push.Height * 4, blocking: !push.RealTime, clock, log);
+                    tape = new CaptureTape(dir, state, ffmpeg, push, sink, clock, log, json);
                     try
                     {
-                        ffmpeg = await FfmpegProcess.StartAsync(state.FfmpegPath,
-                            FfmpegArgs.Tape(candidate.Args, state.Quality, state.Encoder, state.Fps, dir), dataStdin: false, log, ct).ConfigureAwait(false);
-                        state.Source = candidate.Name;
-                        break;
+                        await push.StartAsync(sink, ct).ConfigureAwait(false);
                     }
-                    catch (CaptureException ex)
+                    catch
                     {
-                        last = ex;
-                        log.Warn($"Video input {candidate.Name} failed; trying the next one. {LastLine(ex.Message)}");
+                        await tape.AbandonAsync().ConfigureAwait(false);
+                        throw;
                     }
+                    break;
                 }
-                if (ffmpeg is null) throw last ?? new CaptureException(CaptureError.CaptureFailed, "No video input candidates.");
-                tape = new CaptureTape(dir, state, ffmpeg, null, null, Stopwatch.StartNew(), log, json);
-                break;
+                default:
+                    throw new CaptureException(CaptureError.InvalidArgument, $"Unsupported video source {source.GetType().Name}.");
             }
-            case PushVideoSource push:
-            {
-                state.FixedTimestep = !push.RealTime;
-                var ffmpeg = await FfmpegProcess.StartAsync(state.FfmpegPath,
-                    FfmpegArgs.Tape(FfmpegArgs.PushInput(push.Width, push.Height, state.Fps, push.RealTime), state.Quality, state.Encoder, state.Fps, dir),
-                    dataStdin: true, log, ct).ConfigureAwait(false);
-                var clock = Stopwatch.StartNew();
-                var sink = new FrameSink(ffmpeg.DataStdin, push.Width * push.Height * 4, blocking: !push.RealTime, clock, log);
-                tape = new CaptureTape(dir, state, ffmpeg, push, sink, clock, log, json);
-                try
-                {
-                    await push.StartAsync(sink, ct).ConfigureAwait(false);
-                }
-                catch
-                {
-                    await tape.AbandonAsync().ConfigureAwait(false);
-                    throw;
-                }
-                break;
-            }
-            default:
-                throw new CaptureException(CaptureError.InvalidArgument, $"Unsupported video source {source.GetType().Name}.");
+        }
+        catch
+        {
+            // No tape will own these tracks, so nothing else would release them.
+            foreach (var track in audio) await DisposeQuietlyAsync(track, log).ConfigureAwait(false);
+            throw;
         }
 
         for (var i = 0; i < audio.Count; i++)
@@ -122,6 +131,7 @@ internal sealed class CaptureTape : IAsyncDisposable
             catch (Exception ex)
             {
                 fs.Dispose();
+                await DisposeQuietlyAsync(audio[i], log).ConfigureAwait(false);
                 log.Warn($"Audio track {audio[i].Name} could not start; recording without it.", ex);
             }
         }
@@ -136,6 +146,18 @@ internal sealed class CaptureTape : IAsyncDisposable
         }
         log.Info($"Tape started: {state.Width}x{state.Height}@{state.Fps} {state.Quality} via {state.Source}, {tape._audio.Count} audio track(s).");
         return tape;
+    }
+
+    private static async Task DisposeQuietlyAsync(IAudioTrackCapture track, ICaptureLog log)
+    {
+        try
+        {
+            await track.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            log.Warn($"Audio track {track.Name} did not dispose cleanly.", ex);
+        }
     }
 
     private static string LastLine(string message) =>

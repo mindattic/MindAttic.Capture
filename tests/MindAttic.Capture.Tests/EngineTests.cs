@@ -188,6 +188,50 @@ public class EngineTests
         public IReadOnlyList<IAudioTrackCapture> CreateAudioTracks(AudioMode mode) => throw new InvalidOperationException("No audio endpoint.");
     }
 
+    private sealed class FakeTrack(bool failStart) : IAudioTrackCapture
+    {
+        public bool Disposed;
+        public string Name => "fake";
+        public AudioFormat Format { get; } = new(48000, 2, "f32le");
+        public Task StartAsync(Stream sink, CancellationToken ct) => failStart ? throw new InvalidOperationException("no device") : Task.CompletedTask;
+        public Task StopAsync() => Task.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            Disposed = true;
+            return default;
+        }
+    }
+
+    private sealed class TrackHost(FakeTrack track, bool failVideo) : ICaptureHost
+    {
+        private readonly SyntheticHost _inner = new();
+        public string Name => "track-host";
+        public HostCapabilities Capabilities => _inner.Capabilities;
+        public ValueTask<CapturedImage> CaptureStillAsync(ScreenshotOptions options, CancellationToken ct) => _inner.CaptureStillAsync(options, ct);
+        public VideoSource CreateVideoSource(int fps) => failVideo ? new FailingSource() : _inner.CreateVideoSource(fps);
+        public IReadOnlyList<IAudioTrackCapture> CreateAudioTracks(AudioMode mode) => [track];
+    }
+
+    private sealed class FailingSource : PushVideoSource
+    {
+        public override int Width => 320;
+        public override int Height => 180;
+        public override bool RealTime => true;
+        public override string Description => "failing";
+        public override Task StartAsync(IFrameSink sink, CancellationToken ct) => throw new CaptureException(CaptureError.CaptureFailed, "no frames");
+        public override Task StopAsync() => Task.CompletedTask;
+    }
+
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    public async Task Audio_tracks_that_never_ran_are_disposed(bool failTrack, bool failVideo)
+    {
+        var track = new FakeTrack(failTrack);
+        await using var engine = await CaptureEngine.StartNewAsync(new TrackHost(track, failVideo), Options(o => { o.Audio = AudioMode.App; o.ReplayArmed = true; }));
+        await Task.Delay(300);
+        Assert.That(track.Disposed, Is.True);
+    }
+
     [Test]
     public async Task A_host_that_cannot_create_audio_tracks_still_records_video()
     {
