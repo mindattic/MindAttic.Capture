@@ -355,7 +355,7 @@ internal static class ApiClient
             var eq = kv.IndexOf('=');
             if (eq <= 0) throw new CaptureException(CaptureError.InvalidArgument, $"Event data must be key=value; got \"{kv}\".");
             var value = kv[(eq + 1)..];
-            data[kv[..eq]] = double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) ? n : value;
+            data[kv[..eq]] = double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) && double.IsFinite(n) && n.ToString("R", CultureInfo.InvariantCulture) == value ? n : value;
         }
         using var http = new HttpClient();
         using var request = new HttpRequestMessage(HttpMethod.Post, url + "raise")
@@ -363,7 +363,13 @@ internal static class ApiClient
             Content = new StringContent(JsonSerializer.Serialize(new { @event = name, data }), Encoding.UTF8, "application/json"),
         };
         request.Headers.Add("X-Capture-Token", token);
-        using var response = await http.SendAsync(request);
+        HttpResponseMessage response;
+        try { response = await http.SendAsync(request); }
+        catch (HttpRequestException)
+        {
+            throw new CaptureException(CaptureError.TargetNotFound, "No `capture serve` is running (the agent did not answer).");
+        }
+        using var _ = response;
         if (response.IsSuccessStatusCode) return 0;
         Console.Error.WriteLine($"error: {(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}");
         return (int)CaptureError.CaptureFailed;
