@@ -188,7 +188,7 @@ public class EngineTests
         public IReadOnlyList<IAudioTrackCapture> CreateAudioTracks(AudioMode mode) => throw new InvalidOperationException("No audio endpoint.");
     }
 
-    private sealed class FakeTrack(bool failStart) : IAudioTrackCapture
+    private sealed class FakeTrack(bool failStart, bool throwOnDispose = false) : IAudioTrackCapture
     {
         public bool Disposed;
         public string Name => "fake";
@@ -198,6 +198,7 @@ public class EngineTests
         public ValueTask DisposeAsync()
         {
             Disposed = true;
+            if (throwOnDispose) throw new IOException("disk full");
             return default;
         }
     }
@@ -220,6 +221,42 @@ public class EngineTests
         public override string Description => "failing";
         public override Task StartAsync(IFrameSink sink, CancellationToken ct) => throw new CaptureException(CaptureError.CaptureFailed, "no frames");
         public override Task StopAsync() => Task.CompletedTask;
+    }
+
+    private sealed class CountingSource(PushVideoSource inner) : PushVideoSource
+    {
+        public int Stops;
+        public override int Width => inner.Width;
+        public override int Height => inner.Height;
+        public override bool RealTime => inner.RealTime;
+        public override string Description => inner.Description;
+        public override Task StartAsync(IFrameSink sink, CancellationToken ct) => inner.StartAsync(sink, ct);
+        public override Task StopAsync()
+        {
+            Stops++;
+            return inner.StopAsync();
+        }
+    }
+
+    private sealed class CountingHost(FakeTrack track) : ICaptureHost
+    {
+        private readonly SyntheticHost _inner = new();
+        public CountingSource? Source;
+        public string Name => "counting";
+        public HostCapabilities Capabilities => _inner.Capabilities;
+        public ValueTask<CapturedImage> CaptureStillAsync(ScreenshotOptions options, CancellationToken ct) => _inner.CaptureStillAsync(options, ct);
+        public VideoSource CreateVideoSource(int fps) => Source = new CountingSource((PushVideoSource)_inner.CreateVideoSource(fps));
+        public IReadOnlyList<IAudioTrackCapture> CreateAudioTracks(AudioMode mode) => [track];
+    }
+
+    [Test]
+    public async Task Tape_stop_finishes_stopping_when_an_audio_track_fails_to_dispose()
+    {
+        var host = new CountingHost(new FakeTrack(false, throwOnDispose: true));
+        var engine = await CaptureEngine.StartNewAsync(host, Options(o => { o.Audio = AudioMode.App; o.ReplayArmed = true; }));
+        await Task.Delay(300);
+        await engine.DisposeAsync();
+        Assert.That(host.Source!.Stops, Is.EqualTo(1));
     }
 
     [TestCase(true, false)]

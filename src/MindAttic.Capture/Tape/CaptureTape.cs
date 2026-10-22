@@ -291,11 +291,36 @@ internal sealed class CaptureTape : IAsyncDisposable
             {
                 _log.Warn($"Audio track {capture.Name} did not stop cleanly.", ex);
             }
-            await file.FlushAsync().ConfigureAwait(false);
-            file.Dispose();
-            await capture.DisposeAsync().ConfigureAwait(false);
+            // A full disk can fail the flush: finish stopping the rest (ffmpeg above all) regardless.
+            try
+            {
+                await file.FlushAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _log.Warn($"Audio track {capture.Name} could not be flushed; its tail may be lost.", ex);
+            }
+            try
+            {
+                file.Dispose();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _log.Warn($"Audio track {capture.Name} could not be closed cleanly.", ex);
+            }
+            await DisposeQuietlyAsync(capture, _log).ConfigureAwait(false);
         }
-        if (_push is not null) await _push.StopAsync().ConfigureAwait(false);
+        if (_push is not null)
+        {
+            try
+            {
+                await _push.StopAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _log.Warn("The video source did not stop cleanly.", ex);
+            }
+        }
         var lag = 0.0;
         try
         {
