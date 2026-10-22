@@ -57,6 +57,18 @@ public class OutputManagerManifestTests
     }
 
     [Test]
+    public void Concurrent_AddCapture_leaves_a_manifest_with_every_capture()
+    {
+        var m = NewManager();
+        const int count = 300;
+        Parallel.For(0, count, new ParallelOptions { MaxDegreeOfParallelism = 16 }, i =>
+            m.AddCapture(new CaptureResult { Kind = CaptureKind.Screenshot, Tag = $"t{i}", Files = [], Timestamp = DateTimeOffset.Now }));
+
+        var loaded = _json.Deserialize<SessionManifest>(File.ReadAllText(m.SessionStem + ".session.json"))!;
+        Assert.That(loaded.Captures, Has.Count.EqualTo(count));
+    }
+
+    [Test]
     public void MarkersSnapshot_is_a_safe_copy_under_concurrent_AddMarker()
     {
         var m = NewManager();

@@ -87,6 +87,7 @@ internal sealed class OutputManager
     private readonly ICaptureLog _log;
     private readonly Func<DateTimeOffset> _now;
     private readonly object _gate = new();
+    private readonly object _manifestWriteGate = new();
     private readonly HashSet<string> _reserved = new(StringComparer.OrdinalIgnoreCase);
     private string? _root;
     private string? _sessionDir;
@@ -305,19 +306,23 @@ internal sealed class OutputManager
 
     public void SaveManifest()
     {
-        string json;
-        lock (_gate)
+        // Snapshot and write under one lock, so concurrent saves reach the file in snapshot order and never collide on it.
+        lock (_manifestWriteGate)
         {
-            if (_sessionDir is null && Manifest.Captures.Count == 0 && Manifest.Markers.Count == 0 && !Manifest.SessionRecording) return;
-            json = _json.Serialize(Manifest);
-        }
-        try
-        {
-            File.WriteAllText(SessionStem + ".session.json", json);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CaptureException)
-        {
-            _log.Warn("Could not write the session manifest.", ex);
+            string json;
+            lock (_gate)
+            {
+                if (_sessionDir is null && Manifest.Captures.Count == 0 && Manifest.Markers.Count == 0 && !Manifest.SessionRecording) return;
+                json = _json.Serialize(Manifest);
+            }
+            try
+            {
+                File.WriteAllText(SessionStem + ".session.json", json);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CaptureException)
+            {
+                _log.Warn("Could not write the session manifest.", ex);
+            }
         }
     }
 
