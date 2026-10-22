@@ -827,12 +827,20 @@ public sealed class CaptureEngine : ICapture
         if (tape is not null)
         {
             var end = tape.Now;
-            await tape.StopAsync().ConfigureAwait(false);
+            try { await tape.StopAsync().ConfigureAwait(false); }
+            catch (Exception ex) { _log.Error("Stopping the tape failed; shutting down anyway.", ex); }
             Diagnostics.FramesWritten = tape.FramesWritten;
             Diagnostics.FramesDropped = tape.FramesDropped;
             Diagnostics.MaxEncoderLagSeconds = tape.MaxLagSeconds;
             Diagnostics.TapeRunning = false;
-            if (tape.State.SessionRecording) WriteFinalizeRequest(tape, end);
+            if (tape.State.SessionRecording)
+            {
+                try { WriteFinalizeRequest(tape, end); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _log.Error($"Could not write the finalize request in {tape.Dir}; the next launch will recover it.", ex);
+                }
+            }
         }
         if (_valve is { } valve)
         {
@@ -848,8 +856,15 @@ public sealed class CaptureEngine : ICapture
 
         if (tape is not null)
         {
-            if (tape.State.SessionRecording) await ExportSessionTapeAsync(tape, wait: true).ConfigureAwait(false);
-            else SessionFinalizer.DeleteTape(tape.Dir);
+            try
+            {
+                if (tape.State.SessionRecording) await ExportSessionTapeAsync(tape, wait: true).ConfigureAwait(false);
+                else SessionFinalizer.DeleteTape(tape.Dir);
+            }
+            catch (Exception ex)
+            {
+                _log.Error($"The session export failed; the tape stays in {tape.Dir} for recovery.", ex);
+            }
         }
         _tapeGate.Dispose();
     }
