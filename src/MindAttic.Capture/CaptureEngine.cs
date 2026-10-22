@@ -618,7 +618,19 @@ public sealed class CaptureEngine : ICapture
                 OwnerPid = me.Id, OwnerStartTicks = me.StartTime.ToUniversalTime().Ticks,
             };
             var source = _host.CreateVideoSource(_options.Fps);
-            var audio = _options.Audio == AudioMode.None ? [] : _host.CreateAudioTracks(_options.Audio);
+            IReadOnlyList<IAudioTrackCapture> audio = [];
+            if (_options.Audio != AudioMode.None)
+            {
+                try
+                {
+                    audio = _host.CreateAudioTracks(_options.Audio);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // No audio device (a server, a VM): the video is still worth recording, as with a track that fails to start.
+                    _log.Warn("Audio tracks could not be created; recording without audio.", ex);
+                }
+            }
             var started = await CaptureTape.StartAsync(dir, state, source, audio, _log, _json, ct).ConfigureAwait(false);
             started.SetRetention(KeepFrom);
             _tape = started;

@@ -177,6 +177,26 @@ public class EngineTests
         Assert.That(Probe(r.PrimaryFile!, "format=duration"), Is.EqualTo(2.0).Within(0.15));
     }
 
+    /// <summary>A host with no audio device: creating its audio tracks throws.</summary>
+    private sealed class NoAudioDeviceHost : ICaptureHost
+    {
+        private readonly SyntheticHost _inner = new();
+        public string Name => "no-audio";
+        public HostCapabilities Capabilities => _inner.Capabilities;
+        public ValueTask<CapturedImage> CaptureStillAsync(ScreenshotOptions options, CancellationToken ct) => _inner.CaptureStillAsync(options, ct);
+        public VideoSource CreateVideoSource(int fps) => _inner.CreateVideoSource(fps);
+        public IReadOnlyList<IAudioTrackCapture> CreateAudioTracks(AudioMode mode) => throw new InvalidOperationException("No audio endpoint.");
+    }
+
+    [Test]
+    public async Task A_host_that_cannot_create_audio_tracks_still_records_video()
+    {
+        await using var engine = await CaptureEngine.StartNewAsync(new NoAudioDeviceHost(), Options(o => o.Audio = AudioMode.App));
+        var r = await engine.ClipAsync(TimeSpan.FromSeconds(1), "clip", new RecordingOptions { Preset = CapturePreset.Lossless });
+        Assert.That(r.Succeeded, Is.True, r.Error);
+        Assert.That(ProbeText(r.PrimaryFile!, "stream=codec_type"), Is.EqualTo("video"));
+    }
+
     [Test]
     public async Task Replay_covers_before_and_after()
     {
