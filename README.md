@@ -1,8 +1,25 @@
 # MindAttic.Capture
 
-Programmatic video capture and screenshots for MindAttic games and apps: trailer footage, store
-screenshots, devlog clips and bug-repro video, triggered from code when things happen ("critical
-hit", "battle complete") or recorded for a whole run with `-capture`.
+Programmatic video capture and screenshots for MindAttic games and apps: trailer footage, store screenshots, devlog clips and bug-repro video, triggered from code or recorded by hand from the tray.
+
+![C#](https://img.shields.io/badge/C%23-.NET%2010-512BD4) ![Platform](https://img.shields.io/badge/platform-Windows-0078D4) ![Unity](https://img.shields.io/badge/Unity-6-black) ![Status](https://img.shields.io/badge/status-in%20development-orange)
+
+## Why
+
+- Get trailer, store-shot and devlog footage as a by-product of playing, not a separate recording session.
+- Catch the moment: a replay saved on "boss-death" includes the seconds before it happened.
+- Record any app with no code changes, or wire one line into a WPF app or a Unity game.
+- Leave a long run unattended: a shut-off valve stops capture before the disk or memory runs out.
+- Keep shipped builds clean: capture stays out of Release builds.
+
+## Features
+
+- Rolling lossless (FFV1) or hardware HEVC tape that clips, replays and whole sessions are cut from.
+- Screenshots, clips, replays and sessions from code, trigger rules, hotkeys, a localhost API and a JavaScript bridge.
+- A system-tray recorder (`capture-tray.exe`) for hand recording: screens, any open app, or a dragged area.
+- The `-capture` command-line flag, understood by every wired MindAttic GUI app.
+- Sidecar JSON per file and a session manifest, with markers written as video chapters.
+- Crash recovery: finished segments stay on disk and are exported on the next launch or by `capture recover`.
 
 ```text
  your app / game                     MindAttic.Capture                               R:\MindAttic\Capture\
@@ -22,7 +39,32 @@ hit", "battle complete") or recorded for a whole run with `-capture`.
 | `capture.exe` (agent) | net10.0-windows10.0.19041 | CLI and localhost API: record any app with no code changes, serve browser pages and scripts, finalize and recover sessions. |
 | `com.mindattic.capture` (Unity) | Unity 6, Windows | Game-view capture via GPU readback, game audio, Play Mode menu; reads `-capture` from the player command line. |
 
-Install the agent once with `tools\install.ps1` (to `%LOCALAPPDATA%\MindAttic\Capture\bin`; add `-AddToPath` for `capture` everywhere). With the agent installed, apps hand their session export to it and exit immediately.
+The agent and the tray recorder are installed together (see Install and deploy below). With the agent installed, apps hand their session export to it and exit immediately.
+
+## Install and deploy
+
+Run `deploy.ps1` from the repo root. It installs the agent (`capture.exe`) and tray recorder (`capture-tray.exe`) only when the source is newer than the installed copy, so it is cheap to run every time.
+
+```powershell
+.\deploy.ps1            # install if stale
+.\deploy.ps1 -Force     # install even if the installed copy looks current
+.\deploy.ps1 -Launch    # also start the tray recorder
+```
+
+- Binaries stay in `%LOCALAPPDATA%\MindAttic\Capture\bin`, where `DesktopCapture` finds the agent for other apps.
+- It writes `C:\Apps\MindAttic.Capture\deploy.bat` (under `%LOCALAPPDATA%\Programs` when `C:\Apps` is missing). The desktop shortcut `MindAttic Capture` opens that file, so each open redeploys when stale and then starts the tray recorder.
+- `tools\install.ps1` is the underlying installer; add `-AddToPath` to get `capture` on PATH everywhere. A file in use is renamed to `*.old` and replaced, so installing is safe while an export runs.
+
+## Tray recorder
+
+`capture-tray.exe` sits in the system tray and records without any code changes. The icon turns red with the elapsed time while recording, and a left-click stops it.
+
+- Record Screen and Screenshot per monitor; Record App and Screenshot App pick any open window and capture it at its own size, filed under the app's name.
+- Record Area and Screenshot Area dim every monitor and let you drag a rectangle: grips move and resize it, arrow keys nudge it (Shift for 10 px), aspect-ratio buttons snap it (16:9, 9:16, 1:1, and more), Enter confirms, Esc cancels. A red frame marks the area while it records.
+- The selector toolbar chooses video files (lossless + MP4, lossless only, MP4 only, GIF) and image format (PNG, JPG). Areas can be saved as named regions, starting with a 9:16 "YouTube Short".
+- Hotkeys: `Ctrl+Alt+Shift+R` starts and stops recording whatever is armed, `Ctrl+Alt+Shift+S` takes a screenshot. Both are rebindable in Settings.
+- Finished captures are listed with their sizes in a notification; Open Last Capture and Show Last Capture in Folder are in the menu. Exit waits for a recording that is starting or saving.
+- Settings (capture folder, default formats, start with Windows, hotkeys) and saved regions live in `%LOCALAPPDATA%\MindAttic\Capture\tray.json`.
 
 Video is encoded by **ffmpeg** (`choco install ffmpeg`, or put `ffmpeg.exe` next to the app). Hardware encoders (NVENC → QuickSync → AMF) are probed automatically, with a software fallback.
 
@@ -270,7 +312,8 @@ Capture is a development tool and stays out of shipped builds:
 - **Windows 10 border.** Windows 10 shows a yellow capture border (Windows 11 doesn't).
 - **H.264 width.** Hardware H.264 is limited to 4096 px wide; wider MP4s use x264.
 - **Audio.** "App" audio is currently the whole-system mix (WASAPI loopback). Per-process audio
-  capture is a later step.
+  capture is a later step. If the host can't create its audio tracks, the recording is made
+  video-only instead of failing.
 - **ffmpeg licensing.** The common Windows builds are GPL. That's fine as a separate exe for
   internal use. Public builds that bundle ffmpeg need an LGPL build or GPL compliance.
 
@@ -280,3 +323,21 @@ Capture is a development tool and stays out of shipped builds:
 dotnet build MindAttic.Capture.slnx
 dotnet test  MindAttic.Capture.slnx      # engine and desktop tests need ffmpeg and an interactive desktop
 ```
+
+Source layout: `src\` holds the core, Windows, Wpf, WebView2, Agent and Tray projects; `tests\` holds
+`MindAttic.Capture.Tests` and `MindAttic.Capture.Windows.Tests`; `unity\` is the Unity package and `js\`
+the JavaScript client. `capture recover` with no root also scans the fallback output folder.
+
+## Documentation
+
+This README is also the home page of the published docs at https://mindattic.github.io/MindAttic.Capture/
+(built by `.github\workflows\docs.yml` through the shared DocFX pipeline).
+
+- [User stories](docs/USER_STORIES.md)
+- [Agent instructions](AGENTS.md)
+
+## License
+
+No license file: all rights reserved.
+
+Part of [MindAttic](https://mindattic.com) — see more projects at [github.com/mindattic](https://github.com/mindattic).
