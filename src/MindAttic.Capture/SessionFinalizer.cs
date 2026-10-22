@@ -46,7 +46,7 @@ public static class SessionFinalizer
             var manifestPath = state.SessionStem + ".session.json";
             var manifest = File.Exists(manifestPath) ? json.Deserialize<SessionManifest>(File.ReadAllText(manifestPath)) : null;
             var end = Math.Min(request?.EndSeconds ?? double.MaxValue, segments[segments.Count - 1].End);
-            var markers = request?.Markers ?? manifest?.Markers ?? [];
+            var markers = request?.Markers ?? manifest?.Markers.Where(m => m.Tape is null || state.Number == 0 || m.Tape == state.Number).ToList() ?? [];
             var recovered = request is null;
             if (recovered) log.Warn($"Recovering session {state.SessionId} of {state.AppName} (the app did not shut down cleanly).");
 

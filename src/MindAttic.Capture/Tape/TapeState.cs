@@ -10,6 +10,8 @@ internal sealed record TapeSegment(string File, double Start, double End);
 internal sealed class TapeState
 {
     public int Version { get; set; } = 1;
+    /// <summary>1 for the first tape of a session, 2 after an encoder restart...; markers remember which tape their time belongs to.</summary>
+    public int Number { get; set; }
     public string AppName { get; set; } = "";
     public string? AppVersion { get; set; }
     public string SessionId { get; set; } = "";
@@ -61,6 +63,8 @@ internal sealed class MarkerRecord
     public string Name { get; set; } = "";
     public DateTimeOffset At { get; set; }
     public double? TapeSeconds { get; set; }
+    /// <summary>The tape (<see cref="TapeState.Number"/>) <see cref="TapeSeconds"/> is measured on; null when no tape ran.</summary>
+    public int? Tape { get; set; }
     public Dictionary<string, object?>? Data { get; set; }
 }
 

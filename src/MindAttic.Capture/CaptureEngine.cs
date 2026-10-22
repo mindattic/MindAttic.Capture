@@ -439,7 +439,7 @@ public sealed class CaptureEngine : ICapture
             var spec = PresetSpec.For(preset, options);
             var stem = _output.NextStem(kind, tag);
             var exporter = new Exporter(Ffmpeg, () => _encoders.Value, _log);
-            var markers = _output.MarkersSnapshot();
+            var markers = MarkersOn(tape);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
             timeout.CancelAfter(ExportTimeout);
             var export = await exporter.ExportAsync(new ExportJob(tape.Dir, tape.State, tape.Segments(), ranges, stem, spec, markers,
@@ -468,7 +468,8 @@ public sealed class CaptureEngine : ICapture
     public void Marker(string name, CaptureData? data = null)
     {
         if (!Enabled) { WarnOnce("Capture is disabled; Marker ignored."); return; }
-        _output.AddMarker(new MarkerRecord { Name = name, At = DateTimeOffset.Now, TapeSeconds = _tape?.Now, Data = data });
+        var tape = _tape;
+        _output.AddMarker(new MarkerRecord { Name = name, At = DateTimeOffset.Now, TapeSeconds = tape?.Now, Tape = tape?.State.Number, Data = data });
     }
 
     /// <inheritdoc/>
@@ -610,6 +611,7 @@ public sealed class CaptureEngine : ICapture
             using var me = Process.GetCurrentProcess();
             var state = new TapeState
             {
+                Number = number,
                 AppName = _options.AppName, AppVersion = _options.AppVersion, SessionId = _output.SessionId,
                 SessionDir = _output.SessionDir, SessionStem = _output.SessionStem,
                 OutputStem = number == 1 ? _output.VideoStem : $"{_output.VideoStem}_part{number}",
@@ -887,9 +889,13 @@ public sealed class CaptureEngine : ICapture
         _tapeGate.Dispose();
     }
 
+    /// <summary>The session's markers taken on <paramref name="tape"/>: another tape's markers are on a different timeline.</summary>
+    private List<MarkerRecord> MarkersOn(CaptureTape tape) =>
+        _output.MarkersSnapshot().Where(m => m.Tape is null || m.Tape == tape.State.Number).ToList();
+
     private void WriteFinalizeRequest(CaptureTape tape, double end)
     {
-        var request = new FinalizeRequest { EndSeconds = end, Markers = _output.MarkersSnapshot() };
+        var request = new FinalizeRequest { EndSeconds = end, Markers = MarkersOn(tape) };
         File.WriteAllText(Path.Combine(tape.Dir, "finalize.json"), _json.Serialize(request));
     }
 

@@ -288,6 +288,19 @@ public class EngineTests
     }
 
     [Test]
+    public async Task Markers_remember_the_tape_they_were_taken_on()
+    {
+        string folder;
+        await using (var engine = await CaptureEngine.StartNewAsync(new SyntheticHost(), Options(o => o.ReplayArmed = true)))
+        {
+            folder = engine.SessionFolder;
+            engine.Marker("on-tape");
+        }
+        var manifest = new SystemTextCaptureJson().Deserialize<Output.SessionManifest>(File.ReadAllText(Directory.GetFiles(folder, "*.session.json").Single()))!;
+        Assert.That(manifest.Markers.Single().Tape, Is.EqualTo(1));
+    }
+
+    [Test]
     public async Task Raised_events_fire_rules()
     {
         var options = Options(o =>
