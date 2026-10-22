@@ -415,9 +415,13 @@ internal sealed class TrayApp : ApplicationContext
 
     private async Task ExitAsync()
     {
-        await StopAsync();
-        for (var waited = 0; _recorder.State is RecorderState.Starting or RecorderState.Stopping && waited < 300; waited++)
-            await Task.Delay(500);
+        // A recording still starting can't be stopped yet: wait for it, then stop it, so Exit never abandons one.
+        for (var waited = 0; waited < 300; waited++)
+        {
+            if (_recorder.State == RecorderState.Recording) await StopAsync();
+            else if (_recorder.State is RecorderState.Starting or RecorderState.Stopping) await Task.Delay(500);
+            else break;
+        }
         _hotkeys.Dispose();
         _icon.Visible = false;
         _icon.Dispose();
