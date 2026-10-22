@@ -266,6 +266,7 @@ internal sealed class ApiServer : IAsyncDisposable
                     JsonValueKind.True => true,
                     JsonValueKind.False => false,
                     JsonValueKind.String => p.Value.GetString(),
+                    JsonValueKind.Null => null,
                     _ => p.Value.ToString(),
                 };
             }

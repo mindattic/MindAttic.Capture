@@ -158,6 +158,18 @@ public class ApiServerTests
     }
 
     [Test]
+    public async Task Raise_keeps_a_null_data_value_null()
+    {
+        var capture = new FakeCapture();
+        await using var server = await StartServerAsync(capture);
+        using var client = new HttpClient { BaseAddress = new Uri(server.Url) };
+        using var response = await SendAsync(client, HttpMethod.Post, "raise", token: server.Token, body: new { @event = "hit", data = new { target = (string?)null } });
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(capture.Raised?.Data?.ContainsKey("target"), Is.True);
+        Assert.That(capture.Raised?.Data?["target"], Is.Null);
+    }
+
+    [Test]
     public async Task Marker_reaches_the_capture()
     {
         var capture = new FakeCapture();
