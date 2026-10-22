@@ -304,6 +304,7 @@ internal sealed class TrayApp : ApplicationContext
 
     private async Task RecordAsync(ArmedTarget target)
     {
+        if (_recorder.State != RecorderState.Idle) return;
         _armed = target;
         try
         {
