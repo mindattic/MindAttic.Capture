@@ -24,6 +24,16 @@ public class CaptureArgsTests
     [Test]
     public void Video_word() => Assert.That(P("-capture", "video", "-demo").Video, Is.True);
 
+    [TestCase("1e20")]
+    [TestCase("-5")]
+    public void Config_replay_seconds_out_of_range_is_an_InvalidArgument_not_an_overflow(string seconds)
+    {
+        var options = new CaptureOptions();
+        var file = new CaptureConfigFile { Replay = new ReplayConfig { Seconds = double.Parse(seconds, System.Globalization.CultureInfo.InvariantCulture) } };
+        var ex = Assert.Throws<CaptureException>(() => options.Apply(file))!;
+        Assert.That(ex.Error, Is.EqualTo(CaptureError.InvalidArgument));
+    }
+
     [TestCase("5", 5.0)]
     [TestCase("2.5", 2.5)]
     [TestCase("500ms", 0.5)]

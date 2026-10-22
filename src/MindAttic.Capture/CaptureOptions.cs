@@ -140,7 +140,13 @@ public sealed class CaptureOptions
         if (file.Replay is { } replay)
         {
             if (replay.Armed is { } armed) ReplayArmed = armed;
-            if (replay.Seconds is { } s) ReplayLength = TimeSpan.FromSeconds(s);
+            if (replay.Seconds is { } s)
+            {
+                // TimeSpan.FromSeconds throws a raw OverflowException on huge values; say what is wrong instead.
+                if (double.IsNaN(s) || s < 0 || s > TimeSpan.FromHours(1).TotalSeconds)
+                    throw new CaptureException(CaptureError.InvalidArgument, $"replay.seconds {s} is out of range (0-3600).");
+                ReplayLength = TimeSpan.FromSeconds(s);
+            }
         }
         if (file.Limits is { } limits) Limits.Apply(limits);
         if (file.Rules is { } rules) Rules.AddRange(rules);
