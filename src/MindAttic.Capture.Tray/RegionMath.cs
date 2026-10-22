@@ -37,10 +37,10 @@ internal static class RegionMath
         if (ratio is { } k && grip != Grip.Move) return DragLocked(start, grip, dx, dy, bounds, k);
         if (grip == Grip.Move) return Clamp(start with { X = start.X + dx, Y = start.Y + dy }, bounds);
         int l = start.X, t = start.Y, r = start.Right, b = start.Bottom;
-        if (grip is Grip.Left or Grip.BottomLeft) l = Math.Clamp(l + dx, bounds.X, r - MinSide);
-        if (grip is Grip.Right or Grip.TopRight or Grip.BottomRight) r = Math.Clamp(r + dx, l + MinSide, bounds.Right);
-        if (grip is Grip.Top or Grip.TopRight) t = Math.Clamp(t + dy, bounds.Y, b - MinSide);
-        if (grip is Grip.Bottom or Grip.BottomLeft or Grip.BottomRight) b = Math.Clamp(b + dy, t + MinSide, bounds.Bottom);
+        if (grip is Grip.Left or Grip.BottomLeft) l = Math.Clamp(l + dx, bounds.X, Math.Max(bounds.X, r - MinSide));
+        if (grip is Grip.Right or Grip.TopRight or Grip.BottomRight) r = Math.Clamp(r + dx, Math.Min(l + MinSide, bounds.Right), bounds.Right);
+        if (grip is Grip.Top or Grip.TopRight) t = Math.Clamp(t + dy, bounds.Y, Math.Max(bounds.Y, b - MinSide));
+        if (grip is Grip.Bottom or Grip.BottomLeft or Grip.BottomRight) b = Math.Clamp(b + dy, Math.Min(t + MinSide, bounds.Bottom), bounds.Bottom);
         return new PixelRect(l, t, r - l, b - t);
     }
 
