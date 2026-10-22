@@ -204,7 +204,7 @@ internal sealed class ApiServer : IAsyncDisposable
         var buffer = new byte[64 * 1024];
         while (ws.State == WebSocketState.Open && !_stop.IsCancellationRequested)
         {
-            var sb = new StringBuilder();
+            var ms = new MemoryStream();
             WebSocketReceiveResult r;
             var total = 0;
             do
@@ -221,14 +221,14 @@ internal sealed class ApiServer : IAsyncDisposable
                     await ws.CloseAsync(WebSocketCloseStatus.MessageTooBig, "Message too large.", CancellationToken.None);
                     return;
                 }
-                sb.Append(Encoding.UTF8.GetString(buffer, 0, r.Count));
+                ms.Write(buffer, 0, r.Count);
             } while (!r.EndOfMessage);
 
             object reply;
             string? id = null;
             try
             {
-                var msg = JsonDocument.Parse(sb.ToString()).RootElement;
+                var msg = JsonDocument.Parse(ms.ToArray()).RootElement;
                 id = msg.TryGetProperty("id", out var idEl) ? idEl.ToString() : null;
                 var op = msg.GetProperty("op").GetString() ?? "";
                 reply = op == "status" ? Status() : await DispatchAsync(op, msg);
