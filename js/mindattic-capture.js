@@ -54,6 +54,7 @@
       };
       socket.onclose = function () {
         socket = null;
+        queue.length = 0;
         pending.forEach(function (p) { p({ ok: false, error: 'capture agent disconnected' }); });
         pending.clear();
       };
@@ -79,13 +80,15 @@
     return transport(op, args || {});
   }
 
+  function num(x, dflt) { var n = Number(x); return x == null || x === '' || !isFinite(n) ? dflt : n; }
+
   var api = {
     raise: function (event, data) { return send('raise', { event: String(event), data: data || null }); },
     marker: function (name, data) { return send('marker', { name: String(name), data: data || null }); },
     screenshot: function (tag, data) { return send('screenshot', { tag: tag || 'screenshot', data: data || null }); },
-    clip: function (seconds, tag, data) { return send('clip', { seconds: Number(seconds) || 10, tag: tag || 'clip', data: data || null }); },
+    clip: function (seconds, tag, data) { return send('clip', { seconds: num(seconds, 10), tag: tag || 'clip', data: data || null }); },
     replay: function (before, after, tag, data) {
-      return send('replay', { before: Number(before) || 15, after: Number(after) || 0, tag: tag || 'replay', data: data || null });
+      return send('replay', { before: num(before, 15), after: num(after, 0), tag: tag || 'replay', data: data || null });
     },
     startRecording: function (tag, data) { return send('record/start', { tag: tag || 'recording', data: data || null }); },
     stopRecording: function () { return send('record/stop'); },
