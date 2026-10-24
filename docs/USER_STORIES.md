@@ -102,3 +102,4 @@ _Nothing recorded yet._
 | M.CAPT-T66 | 2026-10-22 | fix | closed | A trigger event raised on a replaced tape anchors its clip/replay at the old tape's time on the new tape: waits up to the old time for coverage, exports wrong footage | 3ed9761 |
 | M.CAPT-T67 | 2026-10-22 | fix | open | An event raised on a tape that was later replaced still gets the wrong footage for its clip/replay (M.CAPT-T66 only stopped the stall): record the event's tape on CaptureEvent so the export reads the right tape | — |
 | M.CAPT-T68 | 2026-10-22 | chore | closed | Regenerate docs/USER_STORIES.md view to catch up with the ticket database (closures from M.CAPT-T37-T66 had drifted out of the generated view) | tickets db render --repo MindAttic.Capture |
+| M.CAPT-T69 | 2026-10-23 | chore | closed | many billions of tokens | — |
