@@ -3,6 +3,8 @@ using MindAttic.Capture;
 using MindAttic.Capture.Agent;
 using MindAttic.Capture.Hosting;
 using MindAttic.Capture.Windows;
+using MindAttic.Capture.Windows.Native;
+using MindAttic.Capture.Windows.Screenshots;
 
 return await AgentProgram.MainAsync(args);
 
@@ -59,7 +61,7 @@ namespace MindAttic.Capture.Agent
 
                   capture monitors                         list monitors (index, bounds)
                   capture windows [filter]                 list visible windows
-                  capture shot   <target> [--format png|jpg|webp|bmp|raw] [--tag T]
+                  capture shot   <target> [--format png|jpg|webp|bmp|raw] [--tag T] [--clipboard]
                   capture record <target> [--duration 30s] [--preset trailer|lossless|devlog|bugreport] [--outputs mp4,gif]
                   capture replay <target> [--length 30s]   keep a rolling buffer; Enter or `capture save` saves it
                   capture run    [--url URL|folder | -- app.exe args]   record an app (--url: in C:\Apps\MindAttic.Browser) until it exits
@@ -69,7 +71,8 @@ namespace MindAttic.Capture.Agent
                   capture finalize <tapeDir>               export a stopped session tape
                   capture recover [root]                   export sessions left behind by crashed apps
 
-                target:  --monitor N | --region x,y,w,h | --window "title" | --hwnd 0x1234 | --process name
+                target:  --self | --monitor N | --region x,y,w,h | --window "title" | --hwnd 0x1234 | --process name
+                         --self: the window hosting this CLI (the app embedding it, or the terminal when run solo)
                 common:  --out R:\MindAttic\Capture  --app Name  --config capture.json  --fps 60  --hq|--lossless
                          --audio app|mic  --gdi  --no-wgc  --ffmpeg path  --verbose
                 """);
@@ -105,8 +108,11 @@ namespace MindAttic.Capture.Agent
         private static async Task<int> ShotAsync(AgentArgs args, ICaptureLog log)
         {
             var o = Options(args, log, "Desktop");
-            await using var engine = await CaptureEngine.StartNewAsync(new DesktopCaptureHost(args.Target(), args.HostOptions()), o);
-            var result = await engine.ScreenshotAsync(args.Get("tag") ?? args.Target().Label, new ScreenshotOptions { Format = args.ImageFormat() });
+            var target = args.Target();
+            await using var engine = await CaptureEngine.StartNewAsync(new DesktopCaptureHost(target, args.HostOptions()), o);
+            var result = await engine.ScreenshotAsync(args.Get("tag") ?? target.Label, new ScreenshotOptions { Format = args.ImageFormat() });
+            if (result.Succeeded && args.Has("clipboard"))
+                ClipboardWriter.SetImage(GdiScreenshotter.Capture(TargetResolver.Resolve(target)));
             return Report(result);
         }
 

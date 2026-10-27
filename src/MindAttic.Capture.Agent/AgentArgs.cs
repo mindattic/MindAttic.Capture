@@ -15,7 +15,7 @@ internal sealed class AgentArgs
 
     private static readonly HashSet<string> Flags = new(StringComparer.OrdinalIgnoreCase)
     {
-        "hq", "lossless", "gdi", "no-wgc", "separate-audio", "verbose", "no-hotkeys", "help",
+        "hq", "lossless", "gdi", "no-wgc", "separate-audio", "verbose", "no-hotkeys", "help", "self", "clipboard",
     };
 
     public static AgentArgs Parse(IReadOnlyList<string> args)
@@ -69,9 +69,10 @@ internal sealed class AgentArgs
 
     public TimeSpan? GetDuration(string name) => Get(name) is { } v ? DurationText.Parse(v) : null;
 
-    /// <summary>The capture target from --monitor / --region / --window / --hwnd / --process (default: primary monitor).</summary>
+    /// <summary>The capture target from --self / --monitor / --region / --window / --hwnd / --process (default: primary monitor).</summary>
     public CaptureTarget Target()
     {
+        if (Has("self")) return CaptureTarget.Window(AppWindows.FindHostWindow());
         if (Get("region") is { } region)
         {
             var parts = region.Split(',', 'x', ' ').Where(p => p.Length > 0)

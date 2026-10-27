@@ -61,12 +61,79 @@ internal static class AppWindows
 
     [DllImport("user32.dll")] private static extern bool IsWindow(nint hwnd);
 
+    /// <summary>
+    /// The window hosting this CLI. A launcher that embeds the CLI in its own window (MindAttic.Orchestrator's
+    /// run.bat, a TermHost-style per-session host with no window of its own) sets <c>APP_EXE</c> to that
+    /// window's executable before spawning it, and every descendant process inherits the variable — so that
+    /// wins first. Otherwise, the nearest ancestor process (walking up from this one) that owns a visible
+    /// window is used: the terminal's own window when the CLI runs solo.
+    /// </summary>
+    public static nint FindHostWindow()
+    {
+        var windows = Desktop.GetWindows();
+        if (Environment.GetEnvironmentVariable("APP_EXE") is { Length: > 0 } appExe &&
+            FindWindowForExePath(appExe, windows, ModulePathOf) is { } hosted)
+            return hosted;
+        return FindHostWindow(Environment.ProcessId, ParentMap(), windows);
+    }
+
+    internal static nint? FindWindowForExePath(string exePath, IReadOnlyList<WindowInfo> windows, Func<int, string?> modulePathOf)
+    {
+        var full = Path.GetFullPath(exePath);
+        return windows
+            .Where(w => string.Equals(modulePathOf(w.ProcessId), full, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(w => w.Bounds.Area)
+            .Select(w => (nint?)w.Hwnd)
+            .FirstOrDefault();
+    }
+
+    private static string? ModulePathOf(int pid)
+    {
+        try
+        {
+            using var p = Process.GetProcessById(pid);
+            return p.MainModule?.FileName;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    internal static nint FindHostWindow(int startPid, IReadOnlyDictionary<int, int> parents, IReadOnlyList<WindowInfo> windows)
+    {
+        var owners = windows.GroupBy(w => w.ProcessId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(w => w.Bounds.Area).First().Hwnd);
+        var pid = startPid;
+        var seen = new HashSet<int> { pid };
+        while (parents.TryGetValue(pid, out var parent) && parent != 0 && seen.Add(parent))
+        {
+            pid = parent;
+            if (owners.TryGetValue(pid, out var hwnd)) return hwnd;
+        }
+        throw new CaptureException(CaptureError.TargetNotFound, "No ancestor process of this CLI owns a window to capture.");
+    }
+
     /// <summary>The process and all of its descendants.</summary>
     internal static HashSet<int> ProcessTree(int root)
     {
+        var parents = ParentMap();
+        var tree = new HashSet<int> { root };
+        bool grew;
+        do
+        {
+            grew = false;
+            foreach (var (pid, parent) in parents)
+                if (tree.Contains(parent) && tree.Add(pid)) grew = true;
+        } while (grew);
+        return tree;
+    }
+
+    private static Dictionary<int, int> ParentMap()
+    {
         var parents = new Dictionary<int, int>();
         var snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if (snapshot == -1) return [root];
+        if (snapshot == -1) return parents;
         try
         {
             var entry = new PROCESSENTRY32 { dwSize = (uint)Marshal.SizeOf<PROCESSENTRY32>() };
@@ -77,15 +144,7 @@ internal static class AppWindows
         {
             CloseHandle(snapshot);
         }
-        var tree = new HashSet<int> { root };
-        bool grew;
-        do
-        {
-            grew = false;
-            foreach (var (pid, parent) in parents)
-                if (tree.Contains(parent) && tree.Add(pid)) grew = true;
-        } while (grew);
-        return tree;
+        return parents;
     }
 
     private const uint TH32CS_SNAPPROCESS = 2;

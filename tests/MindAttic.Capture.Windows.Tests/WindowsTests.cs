@@ -5,6 +5,7 @@ using MindAttic.Capture.Ffmpeg;
 using MindAttic.Capture.Hosting;
 using MindAttic.Capture.Windows;
 using MindAttic.Capture.Windows.Audio;
+using MindAttic.Capture.Windows.Native;
 using MindAttic.Capture.Windows.Video;
 using MindAttic.Capture.Windows.Wgc;
 using NAudio.Wave;
@@ -76,6 +77,87 @@ public class TargetResolverTests
     [Test]
     public void Video_rect_is_clipped_to_the_desktop_with_even_size() =>
         Assert.That(TargetResolver.ClipToDesktop(new PixelRect(3800, -50, 301, 200), Layout), Is.EqualTo(new PixelRect(3800, 0, 40, 150)));
+}
+
+public class AppWindowsTests
+{
+    private static WindowInfo Window(nint hwnd, int pid, int width = 800, int height = 600) =>
+        new(hwnd, "Title", pid, "proc", new PixelRect(0, 0, width, height));
+
+    [Test]
+    public void Finds_the_nearest_ancestor_that_owns_a_window()
+    {
+        // 1 (self, the CLI) -> 2 (no window) -> 3 (owns the host window)
+        var parents = new Dictionary<int, int> { [1] = 2, [2] = 3, [3] = 0 };
+        var windows = new[] { Window(0x30, 3) };
+        Assert.That(AppWindows.FindHostWindow(1, parents, windows), Is.EqualTo((nint)0x30));
+    }
+
+    [Test]
+    public void Stops_at_the_first_ancestor_with_a_window_rather_than_a_further_one()
+    {
+        var parents = new Dictionary<int, int> { [1] = 2, [2] = 3, [3] = 4, [4] = 0 };
+        var windows = new[] { Window(0x20, 2), Window(0x40, 4) };
+        Assert.That(AppWindows.FindHostWindow(1, parents, windows), Is.EqualTo((nint)0x20));
+    }
+
+    [Test]
+    public void An_ancestor_with_several_windows_yields_the_largest()
+    {
+        var parents = new Dictionary<int, int> { [1] = 2, [2] = 0 };
+        var windows = new[] { Window(0x1, 2, 100, 100), Window(0x2, 2, 1000, 1000) };
+        Assert.That(AppWindows.FindHostWindow(1, parents, windows), Is.EqualTo((nint)0x2));
+    }
+
+    [Test]
+    public void No_ancestor_owning_a_window_fails_loudly()
+    {
+        var parents = new Dictionary<int, int> { [1] = 2, [2] = 0 };
+        var ex = Assert.Throws<CaptureException>(() => AppWindows.FindHostWindow(1, parents, []));
+        Assert.That(ex!.Error, Is.EqualTo(CaptureError.TargetNotFound));
+    }
+
+    [Test]
+    public void A_cycle_in_the_process_tree_does_not_loop_forever() =>
+        Assert.Throws<CaptureException>(() => AppWindows.FindHostWindow(1, new Dictionary<int, int> { [1] = 2, [2] = 1 }, []));
+
+    [Test]
+    public void Finds_the_window_of_the_process_running_APP_EXE()
+    {
+        var windows = new[] { Window(0x1, 11), Window(0x2, 22) };
+        Func<int, string?> modules = pid => pid switch { 11 => @"C:\Apps\Other\Other.exe", 22 => @"C:\Apps\MindAttic.Orchestrator\MindAttic.Orchestrator.Desktop.exe", _ => null };
+        Assert.That(AppWindows.FindWindowForExePath(@"C:\Apps\MindAttic.Orchestrator\MindAttic.Orchestrator.Desktop.exe", windows, modules), Is.EqualTo((nint)0x2));
+    }
+
+    [Test]
+    public void No_window_owned_by_APP_EXE_yields_null()
+    {
+        var windows = new[] { Window(0x1, 11) };
+        Assert.That(AppWindows.FindWindowForExePath(@"C:\Apps\MindAttic.Orchestrator\MindAttic.Orchestrator.Desktop.exe", windows, _ => @"C:\Apps\Other\Other.exe"), Is.Null);
+    }
+}
+
+public class ClipboardWriterTests
+{
+    [Test]
+    public void Builds_a_bottom_up_32bpp_header_and_flips_rows()
+    {
+        // 2x2 BGRA, top-down: row0 then row1.
+        var row0 = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };
+        var row1 = new byte[] { 9, 10, 11, 12, 13, 14, 15, 16 };
+        var image = new CapturedImage(2, 2, row0.Concat(row1).ToArray());
+
+        var dib = ClipboardWriter.BuildDibBytes(image);
+
+        Assert.That(dib.Length, Is.EqualTo(40 + 16));
+        Assert.That(BitConverter.ToInt32(dib, 4), Is.EqualTo(2));   // biWidth
+        Assert.That(BitConverter.ToInt32(dib, 8), Is.EqualTo(2));   // biHeight: positive => CF_DIB rows are bottom-up
+        Assert.That(BitConverter.ToInt16(dib, 14), Is.EqualTo(32)); // biBitCount
+        Assert.That(BitConverter.ToUInt32(dib, 16), Is.EqualTo(0u)); // biCompression = BI_RGB
+        // Bottom-up: the DIB's first stored row is the image's last (bottom) row.
+        Assert.That(dib.Skip(40).Take(8), Is.EqualTo(row1));
+        Assert.That(dib.Skip(48).Take(8), Is.EqualTo(row0));
+    }
 }
 
 public class HotkeyAndArgsTests
