@@ -39,14 +39,15 @@ function Test-Stale {
   return [bool]$newer
 }
 
-# install.ps1 points the shortcut at the exe; this one opens the launcher instead, keeping the exe's icon.
+# install.ps1 points the shortcut at the exe; this one opens the launcher instead, keeping the exe's icon, in a normal
+# window (not minimized) so the launcher's menu shows.
 function Set-Shortcut {
   $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'MindAttic Capture.lnk'))
-  if ($shortcut.TargetPath -ne $launcher) {
+  if ($shortcut.TargetPath -ne $launcher -or $shortcut.WindowStyle -ne 1) {
     $shortcut.TargetPath = $launcher
     $shortcut.WorkingDirectory = $bin
     $shortcut.IconLocation = "$tray,0"
-    $shortcut.WindowStyle = 7
+    $shortcut.WindowStyle = 1
     $shortcut.Description = 'MindAttic Capture tray recorder'
     $shortcut.Save()
     Write-Host "Desktop shortcut: MindAttic Capture -> $launcher"
@@ -93,7 +94,7 @@ if not exist "%TRAY%" (
 )
 tasklist /fi "imagename eq capture-tray.exe" 2>nul | find /i "capture-tray.exe" >nul || start "" /d "%BIN%" "%TRAY%"
 exit /b 0
-"@
+"@ -replace "`r?`n", "`r`n"  # CRLF: cmd can miss a goto label in an LF-only batch file
 if (-not (Test-Path $launcher) -or (Get-Content -Raw $launcher) -ne $launcherText) {
   Set-Content -LiteralPath $launcher -Value $launcherText -Encoding ascii -NoNewline
   Write-Host "Wrote $launcher"
