@@ -22,7 +22,7 @@ public class BrowserLocatorTests
     public void A_missing_deployment_fails_loudly_with_how_to_deploy()
     {
         var ex = Assert.Throws<CaptureException>(() => BrowserLocator.Require(@"Z:\nowhere\MindAttic.Browser.exe"));
-        Assert.That(ex!.Message, Does.Contain("deploy.ps1"));
+        Assert.That(ex!.Message, Does.Contain("run.ps1"));
         Assert.That(BrowserLocator.Require(Environment.ProcessPath!), Is.EqualTo(Environment.ProcessPath));
     }
 }

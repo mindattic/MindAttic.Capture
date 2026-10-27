@@ -43,16 +43,16 @@ The agent and the tray recorder are installed together (see Install and deploy b
 
 ## Install and deploy
 
-Run `deploy.ps1` from the repo root. It installs the agent (`capture.exe`) and tray recorder (`capture-tray.exe`) only when the source is newer than the installed copy, so it is cheap to run every time.
+Run `run.ps1` from the repo root. It installs the agent (`capture.exe`) and tray recorder (`capture-tray.exe`) only when the source is newer than the installed copy, so it is cheap to run every time.
 
 ```powershell
-.\deploy.ps1            # install if stale
-.\deploy.ps1 -Force     # install even if the installed copy looks current
-.\deploy.ps1 -Launch    # also start the tray recorder
+.\run.ps1               # install if stale
+.\run.ps1 -Force        # install even if the installed copy looks current
+.\run.ps1 -Launch       # also start the tray recorder
 ```
 
 - Binaries stay in `%LOCALAPPDATA%\MindAttic\Capture\bin`, where `DesktopCapture` finds the agent for other apps.
-- It writes `C:\Apps\MindAttic.Capture\deploy.bat` (under `%LOCALAPPDATA%\Programs` when `C:\Apps` is missing). The desktop shortcut `MindAttic Capture` opens that file, which asks first: `1) Deploy & Run` reinstalls (`-Force -Launch`) and starts the tray recorder; `2) Run` just starts the installed tray recorder. `.\deploy.ps1 -LauncherOnly` rewrites the launcher and shortcut without installing anything.
+- It writes `C:\Apps\MindAttic.Capture\run.bat` (under `%LOCALAPPDATA%\Programs` when `C:\Apps` is missing). The desktop shortcut `MindAttic Capture` opens that file, which asks first: `1) Deploy & Run` reinstalls (`-Force -Launch`) and starts the tray recorder; `2) Run` just starts the installed tray recorder. `.\run.ps1 -LauncherOnly` rewrites the launcher and shortcut without installing anything.
 - `tools\install.ps1` is the underlying installer; add `-AddToPath` to get `capture` on PATH everywhere. A file in use is renamed to `*.old` and replaced, so installing is safe while an export runs.
 
 ## Tray recorder
@@ -149,7 +149,7 @@ explicitly.
 
 **Websites:** `C:\Apps\MindAttic.Browser\MindAttic.Browser.exe <url | site folder> -capture video`. Capture
 always uses this deployed copy of [MindAttic.Browser](https://github.com/mindattic/MindAttic.Browser) (`capture run --url`
-included); deploy or refresh it with that repo's `tools\deploy.ps1`. A folder is served at
+included); deploy or refresh it with that repo's `run.ps1`. A folder is served at
 `https://<folder>.local/`, and its captures are named after the folder (`mindattic.com\mindattic.com_<timestamp>.mkv`)
 or, for generic folders like `dist` or `wwwroot`, after the repository. A URL's captures are named after its host. Pages (in the browser, any WebView2 with the bridge, or plain browsers
 with `capture serve`) call:
