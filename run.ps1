@@ -34,7 +34,7 @@ function Test-Stale {
   $props = Join-Path $repo 'Directory.Build.props'
   if ((Test-Path $props) -and (Get-Item $props).LastWriteTimeUtc -gt $time) { return $true }
   $newer = Get-ChildItem -Path (Join-Path $repo 'src') -Recurse -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -notmatch '\(bin|obj)\' -and ($sourceExts -contains $_.Extension.ToLowerInvariant()) -and $_.LastWriteTimeUtc -gt $time } |
+    Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' -and ($sourceExts -contains $_.Extension.ToLowerInvariant()) -and $_.LastWriteTimeUtc -gt $time } |
     Select-Object -First 1
   return [bool]$newer
 }
