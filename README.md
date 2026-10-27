@@ -52,7 +52,7 @@ Run `deploy.ps1` from the repo root. It installs the agent (`capture.exe`) and t
 ```
 
 - Binaries stay in `%LOCALAPPDATA%\MindAttic\Capture\bin`, where `DesktopCapture` finds the agent for other apps.
-- It writes `C:\Apps\MindAttic.Capture\deploy.bat` (under `%LOCALAPPDATA%\Programs` when `C:\Apps` is missing). The desktop shortcut `MindAttic Capture` opens that file, so each open redeploys when stale and then starts the tray recorder.
+- It writes `C:\Apps\MindAttic.Capture\deploy.bat` (under `%LOCALAPPDATA%\Programs` when `C:\Apps` is missing). The desktop shortcut `MindAttic Capture` opens that file, which asks first: `1) Deploy & Run` reinstalls (`-Force -Launch`) and starts the tray recorder; `2) Run` just starts the installed tray recorder. `.\deploy.ps1 -LauncherOnly` rewrites the launcher and shortcut without installing anything.
 - `tools\install.ps1` is the underlying installer; add `-AddToPath` to get `capture` on PATH everywhere. A file in use is renamed to `*.old` and replaced, so installing is safe while an export runs.
 
 ## Tray recorder
