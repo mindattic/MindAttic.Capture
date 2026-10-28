@@ -115,3 +115,4 @@ _Nothing recorded yet._
 | M.CAPT-T79 | 2026-10-27 | chore | open | Follow the Orchestrator dashboard exe rename and the Maui shell: AppWindows finds the host window under MindAttic.Orchestrator.Desktop.Wpf.exe and MindAttic.Orchestrator.Desktop.Maui.exe (APP_EXE from either run.bat), with WindowsTests updated | — |
 | M.CAPT-T80 | 2026-10-27 | chore | closed | Add 2 file(s); Update 2 file(s); Remove 2 file(s) | — |
 | M.CAPT-T81 | 2026-10-27 | chore | closed | Add 2 file(s); Update 1 file(s); Remove 2 file(s) | — |
+| M.CAPT-T82 | 2026-10-28 | chore | closed | Add 2 file(s); Update 1 file(s); Remove 2 file(s) | — |
