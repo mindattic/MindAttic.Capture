@@ -20,6 +20,8 @@ internal sealed class TrayApp : ApplicationContext
     private readonly Recorder _recorder;
     private readonly System.Windows.Forms.Timer _tick = new() { Interval = 1000 };
     private readonly TraySettings _settings;
+    private readonly MindAttic.Vault.Settings.JsonSettingsStore<TraySettings> _store = TraySettings.CreateStore();
+    private readonly FileSystemWatcher? _settingsWatcher;
     private readonly HotkeyWindow _hotkeys = new();
     private AreaChoice? _lastArea;
     private ArmedTarget _armed;
@@ -29,7 +31,7 @@ internal sealed class TrayApp : ApplicationContext
 
     public TrayApp()
     {
-        _settings = TraySettings.Load(TraySettings.DefaultPath, PrimaryMonitor());
+        _settings = TraySettings.Load(PrimaryMonitor(), _store);
         _armed = ScreenTarget(Desktop.GetMonitors().FirstOrDefault(m => m.IsPrimary)?.Index ?? 0);
         _recorder = new Recorder(CreateOptions);
         _recorder.StateChanged += UpdateIcon;
@@ -46,8 +48,29 @@ internal sealed class TrayApp : ApplicationContext
         _tick.Tick += (_, _) => UpdateIcon();
         _hotkeys.Pressed += OnHotkey;
         RegisterHotkeys();
+        if (_settings.StartWithWindows != StartupRegistration.IsEnabled()) StartupRegistration.Set(_settings.StartWithWindows);
         BuildMenu();
         UpdateIcon();
+
+        // Edits saved in MindAttic.Vault.Desktop take effect without restarting the tray.
+        try
+        {
+            _settingsWatcher = new FileSystemWatcher(_store.Directory, _store.FileName)
+            {
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.CreationTime,
+            };
+            var debounce = new System.Windows.Forms.Timer { Interval = 300 };
+            debounce.Tick += (_, _) => { debounce.Stop(); ApplySavedSettings(); };
+            FileSystemEventHandler changed = (_, _) => ui.Post(_ => { debounce.Stop(); debounce.Start(); }, null);
+            _settingsWatcher.Changed += changed;
+            _settingsWatcher.Created += changed;
+            _settingsWatcher.Renamed += (s, e) => changed(s, e);
+            _settingsWatcher.EnableRaisingEvents = true;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException)
+        {
+            _settingsWatcher = null;
+        }
     }
 
     private CaptureOptions CreateOptions(string appName)
@@ -58,7 +81,7 @@ internal sealed class TrayApp : ApplicationContext
             o.AppVersion = null;
         });
         // After capture.json, so the folder picked in Settings wins.
-        if (!string.IsNullOrWhiteSpace(_settings.OutputRoot)) options.OutputRoot = _settings.OutputRoot;
+        _settings.ApplyTo(options);
         return options;
     }
 
@@ -69,58 +92,39 @@ internal sealed class TrayApp : ApplicationContext
 
     private string? TryRegisterHotkeys()
     {
-        var problems = new[]
-        {
-            _hotkeys.Register(TrayHotkey.Record, _settings.RecordHotkey),
-            _hotkeys.Register(TrayHotkey.Screenshot, _settings.ScreenshotHotkey),
-        }.OfType<string>().ToList();
+        var problems = _settings.Hotkeys().Select(h => _hotkeys.Register(h.Action, h.Keys)).OfType<string>().ToList();
         return problems.Count > 0 ? string.Join(Environment.NewLine, problems) : null;
     }
 
-    private SettingsForm? _settingsForm;
-
-    private void ShowSettings()
+    /// <summary>Settings are edited in MindAttic.Vault.Desktop; its saves come back through the file watcher.</summary>
+    private void OpenSettings()
     {
-        if (_settingsForm is { IsDisposed: false })
-        {
-            _settingsForm.Activate();
-            return;
-        }
-        var current = new TrayPreferences(_settings.RecordHotkey, _settings.ScreenshotHotkey, _settings.OutputRoot,
-            _settings.DefaultVideo, _settings.DefaultImage, StartupRegistration.IsEnabled());
-        // Released while the window is open, so pressing the current keys binds them instead of firing them.
-        _hotkeys.Unregister(TrayHotkey.Record);
-        _hotkeys.Unregister(TrayHotkey.Screenshot);
-        var defaultOutput = WindowsCaptureOptions.Create([]).OutputRoot;
-        _settingsForm = new SettingsForm(current, defaultOutput, ApplyPreferences);
-        _settingsForm.FormClosed += (_, _) =>
-        {
-            _settingsForm = null;
-            RegisterHotkeys();
-            UpdateIcon();
-        };
-        _settingsForm.Show();
-        _settingsForm.Activate();
+        if (!MindAttic.Vault.Launch.VaultSettings.Open(TraySettings.AppId))
+            ShowError("MindAttic Vault isn't installed", $"Install MindAttic Vault to change these settings, or edit {_store.FilePath}.");
     }
 
-    /// <summary>Checks the new hotkeys can be registered, then saves everything; returns why not, keeping the old settings.</summary>
-    private string? ApplyPreferences(TrayPreferences p)
+    /// <summary>Puts a save from Vault into effect; hotkeys another app holds are refused and the old ones kept.</summary>
+    private void ApplySavedSettings()
     {
-        var (oldRecord, oldShot) = (_settings.RecordHotkey, _settings.ScreenshotHotkey);
-        (_settings.RecordHotkey, _settings.ScreenshotHotkey) = (p.RecordHotkey, p.ScreenshotHotkey);
-        if (TryRegisterHotkeys() is { } problem)
+        var next = _store.Load();
+        if (next.RecordHotkey != _settings.RecordHotkey || next.ScreenshotHotkey != _settings.ScreenshotHotkey)
         {
-            (_settings.RecordHotkey, _settings.ScreenshotHotkey) = (oldRecord, oldShot);
-            _hotkeys.Unregister(TrayHotkey.Record);
-            _hotkeys.Unregister(TrayHotkey.Screenshot);
-            return problem;
+            var (oldRecord, oldShot) = (_settings.RecordHotkey, _settings.ScreenshotHotkey);
+            (_settings.RecordHotkey, _settings.ScreenshotHotkey) = (next.RecordHotkey, next.ScreenshotHotkey);
+            if (TryRegisterHotkeys() is { } problem)
+            {
+                (_settings.RecordHotkey, _settings.ScreenshotHotkey) = (oldRecord, oldShot);
+                TryRegisterHotkeys();
+                ShowError("Hotkey not available", problem + Environment.NewLine + "Keeping the previous hotkeys.");
+            }
         }
-        _settings.OutputRoot = p.OutputRoot;
-        _settings.DefaultVideo = p.Video;
-        _settings.DefaultImage = p.Image;
-        _settings.Save(TraySettings.DefaultPath);
-        StartupRegistration.Set(p.StartWithWindows);
-        return null;
+        _settings.OutputRoot = next.OutputRoot;
+        _settings.DefaultVideo = next.DefaultVideo;
+        _settings.DefaultImage = next.DefaultImage;
+        _settings.Regions = next.Regions;
+        if (next.StartWithWindows != StartupRegistration.IsEnabled()) StartupRegistration.Set(next.StartWithWindows);
+        _settings.StartWithWindows = next.StartWithWindows;
+        UpdateIcon();
     }
 
     private void OnHotkey(TrayHotkey hotkey)
@@ -180,7 +184,7 @@ internal sealed class TrayApp : ApplicationContext
         _menu.Items.Add(new ToolStripMenuItem("Show Last Capture in Folder", null, (_, _) => ShowInExplorer(last!)) { Enabled = last is not null });
         _menu.Items.Add(new ToolStripMenuItem("Open Captures Folder", null, (_, _) => OpenCapturesFolder()));
         _menu.Items.Add(new ToolStripSeparator());
-        _menu.Items.Add(new ToolStripMenuItem("Settings...", null, (_, _) => ShowSettings()));
+        _menu.Items.Add(new ToolStripMenuItem("Settings...", null, (_, _) => OpenSettings()));
         _menu.Items.Add(new ToolStripMenuItem("Exit", null, (_, _) => _ = ExitAsync()));
     }
 
@@ -247,7 +251,7 @@ internal sealed class TrayApp : ApplicationContext
     private IReadOnlyList<SavedRegion> SaveRegion(string name, AreaChoice choice)
     {
         _settings.Upsert(SavedRegion.From(name, choice));
-        _settings.Save(TraySettings.DefaultPath);
+        _store.Save(_settings);
         return _settings.Regions;
     }
 
@@ -255,7 +259,7 @@ internal sealed class TrayApp : ApplicationContext
     {
         if (MessageBox.Show($"Delete the saved region \"{name}\"?", "MindAttic Capture", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         _settings.Remove(name);
-        _settings.Save(TraySettings.DefaultPath);
+        _store.Save(_settings);
     }
 
     private static PixelRect PrimaryMonitor() =>
@@ -293,7 +297,7 @@ internal sealed class TrayApp : ApplicationContext
         }
     }
 
-    private AreaChoice NewArea() => new(default, AspectRatio.Free, _settings.DefaultVideo, _settings.DefaultImage);
+    private AreaChoice NewArea() => _settings.NewArea();
 
     private void Arm(ArmedTarget target)
     {
@@ -422,6 +426,7 @@ internal sealed class TrayApp : ApplicationContext
             else if (_recorder.State is RecorderState.Starting or RecorderState.Stopping) await Task.Delay(500);
             else break;
         }
+        _settingsWatcher?.Dispose();
         _hotkeys.Dispose();
         _icon.Visible = false;
         _icon.Dispose();

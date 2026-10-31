@@ -1,5 +1,8 @@
 using System.IO;
+using System.Text.Json.Nodes;
 using MindAttic.Capture.Tray;
+using MindAttic.Vault.Settings;
+using MindAttic.Vault.Settings.Manifest;
 using NUnit.Framework;
 
 namespace MindAttic.Capture.Windows.Tests;
@@ -8,6 +11,7 @@ public class TraySettingsTests
 {
     private static readonly PixelRect Primary = new(0, 0, 2560, 1440);
     private string _dir = "";
+    private string Legacy => Path.Combine(_dir, "tray.json");
 
     [SetUp]
     public void SetUp()
@@ -19,12 +23,108 @@ public class TraySettingsTests
     [TearDown]
     public void TearDown() => Directory.Delete(_dir, recursive: true);
 
-    [Test]
-    public void First_run_writes_a_YouTube_Short_region_centred_on_the_primary_monitor()
+    private JsonSettingsStore<TraySettings> Store() => TraySettings.CreateStore(_dir);
+    private TraySettings Load(bool startup = false) => TraySettings.Load(Primary, Store(), Legacy, () => startup);
+
+    /// <summary>Writes today's pre-Vault tray.json (PascalCase, enum names) the way the old tray did.</summary>
+    private void WriteLegacy(string json) => File.WriteAllText(Legacy, json);
+
+    private static TraySettings RoundTrip(JsonSettingsStore<TraySettings> store, Action<TraySettings> change)
     {
-        var path = Path.Combine(_dir, "tray.json");
-        var settings = TraySettings.Load(path, Primary);
-        Assert.That(File.Exists(path), Is.True);
+        store.Update(change);
+        return store.Load();
+    }
+
+    [Test]
+    public void Setting_RecordHotkey_ImportsRoundTripsAndIsRegistered()
+    {
+        WriteLegacy("""{ "RecordHotkey": "Ctrl+F9" }""");
+        Assert.That(Load().RecordHotkey, Is.EqualTo("Ctrl+F9"), "today's tray.json value imported");
+        var s = RoundTrip(Store(), x => x.RecordHotkey = "Ctrl+Alt+F10");
+        Assert.That(s.Hotkeys(), Does.Contain((TrayHotkey.Record, "Ctrl+Alt+F10")), "the tray registers it");
+        Assert.That(GlobalHotkeys.TryParse(s.RecordHotkey, out _, out _), Is.True);
+    }
+
+    [Test]
+    public void Setting_ScreenshotHotkey_ImportsRoundTripsAndIsRegistered()
+    {
+        WriteLegacy("""{ "ScreenshotHotkey": "Alt+PrintScreen" }""");
+        Assert.That(Load().ScreenshotHotkey, Is.EqualTo("Alt+PrintScreen"));
+        var s = RoundTrip(Store(), x => x.ScreenshotHotkey = "Shift+F12");
+        Assert.That(s.Hotkeys(), Does.Contain((TrayHotkey.Screenshot, "Shift+F12")));
+    }
+
+    [Test]
+    public void Setting_OutputRoot_ImportsRoundTripsAndIsWhereRecordingsGo()
+    {
+        WriteLegacy("""{ "OutputRoot": "D:\\Captures" }""");
+        Assert.That(Load().OutputRoot, Is.EqualTo(@"D:\Captures"));
+        var s = RoundTrip(Store(), x => x.OutputRoot = @"E:\Clips");
+        var options = new CaptureOptions { OutputRoot = @"R:\from-capture-json" };
+        s.ApplyTo(options);
+        Assert.That(options.OutputRoot, Is.EqualTo(@"E:\Clips"));
+        var unset = new CaptureOptions { OutputRoot = @"R:\from-capture-json" };
+        new TraySettings().ApplyTo(unset);
+        Assert.That(unset.OutputRoot, Is.EqualTo(@"R:\from-capture-json"), "empty keeps capture.json's folder");
+    }
+
+    [Test]
+    public void Setting_DefaultVideo_ImportsRoundTripsAndIsANewAreasFormat()
+    {
+        WriteLegacy("""{ "DefaultVideo": "Gif" }""");
+        Assert.That(Load().DefaultVideo, Is.EqualTo(VideoFormat.Gif));
+        var s = RoundTrip(Store(), x => x.DefaultVideo = VideoFormat.Mp4);
+        Assert.That(s.NewArea().Video, Is.EqualTo(VideoFormat.Mp4));
+        Assert.That(File.ReadAllText(Store().FilePath), Does.Contain("\"Mp4\""), "stored by name, matching the manifest's choices");
+    }
+
+    [Test]
+    public void Setting_DefaultImage_ImportsRoundTripsAndIsANewAreasFormat()
+    {
+        WriteLegacy("""{ "DefaultImage": "Jpg" }""");
+        Assert.That(Load().DefaultImage, Is.EqualTo(ImageFormat.Jpg));
+        var s = RoundTrip(Store(), x => x.DefaultImage = ImageFormat.Png);
+        Assert.That(s.NewArea().Image, Is.EqualTo(ImageFormat.Png));
+    }
+
+    [Test]
+    public void Setting_StartWithWindows_ImportsTodaysRegistryStateAndRoundTrips()
+    {
+        Assert.That(Load(startup: true).StartWithWindows, Is.True, "the registry's current state is imported");
+        var s = RoundTrip(Store(), x => x.StartWithWindows = false);
+        Assert.That(s.StartWithWindows, Is.False, "the tray applies this to the registry at start and on save");
+    }
+
+    [Test]
+    public void Setting_Regions_ImportRoundTripWithEveryFieldAndBecomeChoices()
+    {
+        WriteLegacy("""{ "Regions": [ { "Name": "Clip", "X": -100, "Y": 20, "Width": 640, "Height": 360, "Ratio": "16:9", "Video": "Gif", "Image": "Jpg" } ] }""");
+        var region = Load().Regions.Single();
+        Assert.That((region.Name, region.X, region.Y, region.Width, region.Height, region.Ratio, region.Video, region.Image),
+            Is.EqualTo(("Clip", -100, 20, 640, 360, "16:9", VideoFormat.Gif, ImageFormat.Jpg)));
+        var s = RoundTrip(Store(), x => x.Upsert(SavedRegion.From("Short", new AreaChoice(new PixelRect(1, 2, 300, 400), AspectRatio.Find("9:16"), VideoFormat.Mp4, ImageFormat.Png))));
+        var choice = s.Regions.Single(r => r.Name == "Short").ToChoice();
+        Assert.That(choice.Region, Is.EqualTo(new PixelRect(1, 2, 300, 400)));
+        Assert.That((choice.Ratio.Name, choice.Video, choice.Image), Is.EqualTo(("9:16", VideoFormat.Mp4, ImageFormat.Png)));
+    }
+
+    [Test]
+    public void EverySettingHasItsOwnTest()
+    {
+        var tested = GetType().GetMethods().Select(m => m.Name).Where(n => n.StartsWith("Setting_")).ToList();
+        var top = SettingsManifestBuilder.Build(typeof(TraySettings)).Fields;
+        foreach (var field in top)
+            Assert.That(tested.Any(t => t.StartsWith("Setting_" + char.ToUpperInvariant(field.Property[0]) + field.Property[1..] + "_")), Is.True, field.Property);
+        // Each saved region's own fields are asserted one by one in Setting_Regions_...
+        Assert.That(top.Single(f => f.Property == "regions").Fields!.Select(f => f.Property),
+            Is.EqualTo(new[] { "name", "x", "y", "width", "height", "ratio", "video", "image" }));
+    }
+
+    [Test]
+    public void First_run_without_tray_json_writes_a_YouTube_Short_region_centred_on_the_primary_monitor()
+    {
+        var settings = Load();
+        Assert.That(File.Exists(Store().FilePath), Is.True);
         var shortFrame = settings.Regions.Single();
         Assert.That(shortFrame.Name, Is.EqualTo("YouTube Short"));
         Assert.That(shortFrame.Ratio, Is.EqualTo("9:16"));
@@ -34,19 +134,32 @@ public class TraySettingsTests
     }
 
     [Test]
-    public void Regions_round_trip_with_their_shape_and_formats()
+    public void The_manifest_is_per_machine_and_its_enum_choices_are_the_stored_names()
     {
-        var path = Path.Combine(_dir, "tray.json");
-        var settings = new TraySettings();
-        settings.Upsert(SavedRegion.From("Clip", new AreaChoice(new PixelRect(-100, 20, 640, 360), AspectRatio.Find("16:9"), VideoFormat.Gif, ImageFormat.Jpg)));
-        settings.Save(path);
-        var loaded = TraySettings.Load(path, Primary).Regions.Single();
-        var choice = loaded.ToChoice();
-        Assert.That(choice.Region, Is.EqualTo(new PixelRect(-100, 20, 640, 360)));
-        Assert.That(choice.Ratio.Name, Is.EqualTo("16:9"));
-        Assert.That((choice.Video, choice.Image), Is.EqualTo((VideoFormat.Gif, ImageFormat.Jpg)));
-        Assert.That(File.ReadAllText(path), Does.Contain("\"Gif\""), "enums are stored by name so the file stays readable");
-        Assert.That(File.ReadAllText(path), Does.Contain("\"Ctrl+Alt+Shift+R\""), "hotkeys are not escaped");
+        Load();
+        var m = SettingsManifestFile.TryRead(Path.Combine(_dir, SettingsManifest.FileName))!;
+        Assert.That((m.AppId, m.Scope), Is.EqualTo(("Capture", SettingsManifest.LocalScope)));
+        var video = m.Find("MindAttic:Settings:Capture:defaultVideo")!;
+        Assert.That(video.Choices!.Select(c => c.Value!.GetValue<string>()), Does.Contain("Mp4"));
+        Assert.That(m.Find("MindAttic:Settings:Capture:regions")!.Kind, Is.EqualTo(SettingKind.Collection));
+        Assert.That(File.ReadAllText(Store().FilePath), Does.Contain("\"Ctrl+Alt+Shift+R\""), "hotkeys are not escaped");
+        Assert.That(JsonNode.Parse(File.ReadAllText(Store().FilePath))!["regions"]![0]!["rect"], Is.Null, "computed Rect isn't stored");
+    }
+
+    [Test]
+    public void An_existing_Vault_file_is_never_overwritten_by_tray_json()
+    {
+        Store().Save(new TraySettings { RecordHotkey = "F9" });
+        WriteLegacy("""{ "RecordHotkey": "F10" }""");
+        Assert.That(Load().RecordHotkey, Is.EqualTo("F9"));
+        Assert.That(File.Exists(Legacy), Is.True, "tray.json is left in place as the rollback");
+    }
+
+    [Test]
+    public void A_broken_legacy_file_falls_back_to_first_run_defaults()
+    {
+        WriteLegacy("{ not json");
+        Assert.That(Load().Regions.Single().Name, Is.EqualTo("YouTube Short"));
     }
 
     [Test]
@@ -70,6 +183,16 @@ public class TraySettingsTests
             Assert.That(mods, Is.EqualTo(1u | 2u | 4u), key);
         }
         Assert.That(settings.RecordHotkey, Is.Not.EqualTo(settings.ScreenshotHotkey));
+    }
+
+    [Test]
+    public void The_old_settings_window_is_gone()
+    {
+        var asm = typeof(TraySettings).Assembly;
+        Assert.That(asm.GetType("MindAttic.Capture.Tray.SettingsForm"), Is.Null);
+        Assert.That(asm.GetType("MindAttic.Capture.Tray.TrayPreferences"), Is.Null);
+        Assert.That(asm.GetType("MindAttic.Capture.Tray.TrayApp")!.GetMethod("OpenSettings",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic), Is.Not.Null);
     }
 
     [Test]
@@ -113,26 +236,5 @@ public class TraySettingsTests
         Assert.That(HotkeyText.From(System.Windows.Forms.Keys.ControlKey | System.Windows.Forms.Keys.Control), Is.Null);
         Assert.That(HotkeyText.From(System.Windows.Forms.Keys.ShiftKey | System.Windows.Forms.Keys.Shift), Is.Null);
         Assert.That(HotkeyText.From(System.Windows.Forms.Keys.OemPeriod), Is.Null);
-    }
-
-    [Test]
-    public void Output_folder_and_default_formats_round_trip()
-    {
-        var path = Path.Combine(_dir, "tray.json");
-        var settings = new TraySettings { OutputRoot = @"D:\Captures", DefaultVideo = VideoFormat.Mp4, DefaultImage = ImageFormat.Jpg, RecordHotkey = "F9" };
-        settings.Save(path);
-        var loaded = TraySettings.Load(path, Primary);
-        Assert.That((loaded.OutputRoot, loaded.DefaultVideo, loaded.DefaultImage, loaded.RecordHotkey),
-            Is.EqualTo((@"D:\Captures", VideoFormat.Mp4, ImageFormat.Jpg, "F9")));
-    }
-
-    [Test]
-    public void A_broken_settings_file_is_set_aside_and_defaults_are_used()
-    {
-        var path = Path.Combine(_dir, "tray.json");
-        File.WriteAllText(path, "{ not json");
-        var settings = TraySettings.Load(path, Primary);
-        Assert.That(settings.Regions.Single().Name, Is.EqualTo("YouTube Short"));
-        Assert.That(File.ReadAllText(path + ".bad"), Is.EqualTo("{ not json"));
     }
 }
