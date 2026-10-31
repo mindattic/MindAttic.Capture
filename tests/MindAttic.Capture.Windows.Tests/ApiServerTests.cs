@@ -94,6 +94,17 @@ public class ApiServerTests
         Assert.That(capture.Marked?.Name, Is.EqualTo("checkpoint"));
     }
 
+    [Test]
+    public async Task Info_file_follows_the_vault_local_root_never_the_real_LocalAppData()
+    {
+        var real = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MindAttic");
+        Assert.That(ApiServer.InfoFile, Is.EqualTo(Path.Combine(TestVaultRoots.Local, "Capture", "agent.json")));
+        Assert.That(ApiServer.InfoFile, Does.Not.StartWith(real + Path.DirectorySeparatorChar));
+
+        await using var server = await StartServerAsync(new FakeCapture());
+        Assert.That(File.Exists(ApiServer.InfoFile), Is.True, "the running server publishes its url/token there");
+    }
+
     // --- CORS ---
 
     [Test]

@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using MindAttic.Capture.Hosting;
+using MindAttic.Vault.Paths;
 
 namespace MindAttic.Capture.Agent;
 
@@ -19,8 +20,12 @@ internal sealed class ApiServer : IAsyncDisposable
     public const int DefaultPort = 47800;
     private const int MaxBodyBytes = 1 << 20; // Capture payloads are small key/value bags; this is generous.
     private const int MaxWebSocketMessageBytes = 1 << 20;
-    public static readonly string InfoFile = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MindAttic", "Capture", "agent.json");
+    /// <summary>
+    /// <c>%LOCALAPPDATA%\MindAttic\Capture\agent.json</c>, resolved through <see cref="VaultPaths.LocalApp"/> on every
+    /// read so <c>MINDATTIC_VAULT_LOCAL_ROOT</c> moves it (tests point it at a temp folder and never touch a live
+    /// agent's file).
+    /// </summary>
+    public static string InfoFile => Path.Combine(VaultPaths.LocalApp("Capture"), "agent.json");
 
     private readonly HttpListener _listener;
     private readonly ICapture _capture;
