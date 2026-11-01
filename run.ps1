@@ -110,6 +110,10 @@ if (Test-Stale) {
   & (Join-Path $repo 'tools\install.ps1')
   # An apphost keeps its old time when only a library's method bodies changed, which would read stale on every open.
   foreach ($exe in $tray, $agent) { (Get-Item $exe).LastWriteTimeUtc = [DateTime]::UtcNow }
+  # LAMP step 7 (M.CAPT-T88): refresh settings.manifest.json now, so MindAttic Vault shows this build's settings even
+  # before the tray next starts.
+  $manifest = Start-Process -FilePath $tray -ArgumentList '--write-settings-manifest' -WorkingDirectory $bin -Wait -PassThru
+  if ($manifest.ExitCode -ne 0) { Write-Host "(--write-settings-manifest exited $($manifest.ExitCode); the tray writes it on its next start)" }
   if ($wasRunning) { $Launch = $true }
 } else {
   Write-Host 'MindAttic Capture is up to date.'
