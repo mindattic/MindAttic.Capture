@@ -53,7 +53,7 @@ internal sealed class SavedRegion
 /// <c>%LOCALAPPDATA%\MindAttic\Capture\settings.json</c>, edited in MindAttic.Vault.Desktop (tray Settings...).
 /// The tray applies saved edits live. Imported once from the older <c>tray.json</c> beside it.
 /// </summary>
-[SettingsApp(AppId, "MindAttic Capture", Local = true, Icon = "video",
+[SettingsApp(AppId, "MindAttic.Capture", Local = true, Icon = "video",
     Description = "Tray recorder: hotkeys, where captures go, default formats and saved regions.")]
 internal sealed class TraySettings
 {
