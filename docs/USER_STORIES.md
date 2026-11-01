@@ -165,3 +165,4 @@ _Nothing recorded yet._
 | M.CAPT-T129 | 2026-11-01 | chore | closed | Sync generated/live files | — |
 | M.CAPT-T130 | 2026-11-01 | chore | closed | Sync generated/live files | — |
 | M.CAPT-T131 | 2026-11-01 | chore | closed | Sync generated/live files | — |
+| M.CAPT-T132 | 2026-11-01 | chore | closed | Sync generated/live files | — |
