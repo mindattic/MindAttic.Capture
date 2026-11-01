@@ -124,3 +124,4 @@ _Nothing recorded yet._
 | M.CAPT-T88 | 2026-10-31 | fix | closed | run.ps1 doesn't run the published exe with --write-settings-manifest (LAMP playbook step 7), so after a redeploy MindAttic Vault keeps showing the old settings manifest until the app next runs (found verifying M.VALT-T73) | 39f54f9 TraySettingsTests.RunPs1_WritesTheSettingsManifestAfterPublishing |
 | M.CAPT-T89 | 2026-10-31 | chore | closed | Vault tab named after the repo: SettingsApp DisplayName 'MindAttic Capture' -> 'MindAttic.Capture' | M.VALT-T75 7027e57 |
 | M.CAPT-T90 | 2026-10-31 | chore | closed | Add 2 file(s); Update 2 file(s); Remove 2 file(s) | — |
+| M.CAPT-T91 | 2026-10-31 | chore | closed | Add 2 file(s); Update 1 file(s); Remove 2 file(s) | — |
