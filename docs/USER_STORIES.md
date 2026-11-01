@@ -138,3 +138,4 @@ _Nothing recorded yet._
 | M.CAPT-T102 | 2026-10-31 | chore | closed | Add ryand_SNOWCRASH_2026-10-31_23_35_40_net10.0.trx | — |
 | M.CAPT-T103 | 2026-10-31 | chore | closed | Add main-tests-results | — |
 | M.CAPT-T104 | 2026-10-31 | chore | closed | Add ryand_SNOWCRASH_2026-10-31_23_37_45_net10.0.trx | — |
+| M.CAPT-T105 | 2026-10-31 | chore | closed | Update main-tests; Remove ryand_SNOWCRASH_2026-10-31_23_37_45_net10.0.trx, ryand_SNOWCRASH_2026-10-31_23_37_50_net10.0.trx | — |
