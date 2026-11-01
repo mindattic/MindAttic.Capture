@@ -153,3 +153,4 @@ _Nothing recorded yet._
 | M.CAPT-T117 | 2026-10-31 | chore | closed | Sync generated/live files | — |
 | M.CAPT-T118 | 2026-10-31 | chore | closed | Sync generated/live files | — |
 | M.CAPT-T119 | 2026-10-31 | chore | closed | Sync generated/live files | — |
+| M.CAPT-T120 | 2026-11-01 | chore | closed | Sync generated/live files | — |
