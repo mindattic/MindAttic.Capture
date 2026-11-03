@@ -21,7 +21,7 @@
 
   <ItemGroup>
     <!-- Settings live in MindAttic Vault (edited in MindAttic.Vault.Desktop). -->
-    <PackageReference Include="MindAttic.Vault" Version="7.0.0" />
+    <PackageReference Include="MindAttic.Vault" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>

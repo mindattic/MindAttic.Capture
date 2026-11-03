@@ -106,11 +106,11 @@ internal sealed class TrayApp : ApplicationContext
     /// <summary>Puts a save from Vault into effect; hotkeys another app holds are refused and the old ones kept.</summary>
     private void ApplySavedSettings()
     {
-        // Load() answers defaults for a file it can't read or parse (Vault mid-write, a typo in a hand edit). Applying
-        // those would blank Regions in memory and the next SaveRegion would persist the loss, so keep the last good
-        // settings until the file reads cleanly. (The Vault 7.0.0 package referenced here predates LoadStrict/TryLoad.)
-        if (!IsReadableSettingsFile(_store.FilePath)) return;
-        var next = _store.Load();
+        // TryLoad (MindAttic.Vault 8.0.0, M.CAPT-T146) fails explicitly for a file it can't read or parse (Vault
+        // mid-write, a typo in a hand edit). Applying defaults then would blank Regions in memory and the next
+        // SaveRegion would persist the loss, so keep the last good settings until the file reads cleanly. A missing
+        // or empty file (TryLoad's success-with-defaults cases) is skipped the same way.
+        if (!HasSavedSettings(_store.FilePath) || !_store.TryLoad(out var next)) return;
         if (next.RecordHotkey != _settings.RecordHotkey || next.ScreenshotHotkey != _settings.ScreenshotHotkey)
         {
             var (oldRecord, oldShot) = (_settings.RecordHotkey, _settings.ScreenshotHotkey);
@@ -131,14 +131,15 @@ internal sealed class TrayApp : ApplicationContext
         UpdateIcon();
     }
 
-    private static bool IsReadableSettingsFile(string path)
+    // True when the settings file exists and isn't empty (an empty file is a hand edit mid-truncate, not "no settings").
+    private static bool HasSavedSettings(string path)
     {
         try
         {
-            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
-            return doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object;
+            var info = new FileInfo(path);
+            return info.Exists && info.Length > 0;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return false;
         }
