@@ -108,7 +108,13 @@ namespace MindAttic.Capture.Unity
         {
             if (_quitting) return new ValueTask<CapturedImage>(Task.FromException<CapturedImage>(ShuttingDown()));
             var tcs = new TaskCompletionSource<CapturedImage>(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (ct.CanBeCanceled) ct.Register(() => tcs.TrySetCanceled());
+            if (ct.CanBeCanceled)
+            {
+                // ct is the engine's long-lived shutdown token: an undisposed registration would keep every
+                // screenshot's tcs (and its full-frame CapturedImage) alive until the engine stops.
+                var registration = ct.Register(() => tcs.TrySetCanceled());
+                tcs.Task.ContinueWith(_ => registration.Dispose(), TaskScheduler.Default);
+            }
             _stills.Enqueue((options, tcs));
             // OnQuitting may have drained the queue between the check above and the enqueue.
             if (_quitting) tcs.TrySetException(ShuttingDown());
