@@ -106,6 +106,10 @@ internal sealed class TrayApp : ApplicationContext
     /// <summary>Puts a save from Vault into effect; hotkeys another app holds are refused and the old ones kept.</summary>
     private void ApplySavedSettings()
     {
+        // Load() answers defaults for a file it can't read or parse (Vault mid-write, a typo in a hand edit). Applying
+        // those would blank Regions in memory and the next SaveRegion would persist the loss, so keep the last good
+        // settings until the file reads cleanly. (The Vault 7.0.0 package referenced here predates LoadStrict/TryLoad.)
+        if (!IsReadableSettingsFile(_store.FilePath)) return;
         var next = _store.Load();
         if (next.RecordHotkey != _settings.RecordHotkey || next.ScreenshotHotkey != _settings.ScreenshotHotkey)
         {
@@ -125,6 +129,19 @@ internal sealed class TrayApp : ApplicationContext
         if (next.StartWithWindows != StartupRegistration.IsEnabled()) StartupRegistration.Set(next.StartWithWindows);
         _settings.StartWithWindows = next.StartWithWindows;
         UpdateIcon();
+    }
+
+    private static bool IsReadableSettingsFile(string path)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+            return doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            return false;
+        }
     }
 
     private void OnHotkey(TrayHotkey hotkey)

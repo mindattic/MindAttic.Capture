@@ -109,11 +109,32 @@ namespace MindAttic.Capture.Agent
         {
             var o = Options(args, log, "Desktop");
             var target = args.Target();
-            await using var engine = await CaptureEngine.StartNewAsync(new DesktopCaptureHost(target, args.HostOptions()), o);
+            // The host remembers the frame it handed the engine, so --clipboard copies exactly the saved shot
+            // rather than a second, later capture of the target.
+            var host = new FrameRememberingHost(new DesktopCaptureHost(target, args.HostOptions()));
+            await using var engine = await CaptureEngine.StartNewAsync(host, o);
             var result = await engine.ScreenshotAsync(args.Get("tag") ?? target.Label, new ScreenshotOptions { Format = args.ImageFormat() });
-            if (result.Succeeded && args.Has("clipboard"))
-                ClipboardWriter.SetImage(GdiScreenshotter.Capture(TargetResolver.Resolve(target)));
+            if (result.Succeeded && args.Has("clipboard") && host.LastStill is { } frame)
+                ClipboardWriter.SetImage(frame);
             return Report(result);
+        }
+
+        /// <summary>Passes everything through to <paramref name="inner"/>, keeping the last still it captured.</summary>
+        private sealed class FrameRememberingHost(ICaptureHost inner) : ICaptureHost
+        {
+            public CapturedImage? LastStill { get; private set; }
+            public string Name => inner.Name;
+            public HostCapabilities Capabilities => inner.Capabilities;
+
+            public async ValueTask<CapturedImage> CaptureStillAsync(ScreenshotOptions options, CancellationToken ct)
+            {
+                var image = await inner.CaptureStillAsync(options, ct).ConfigureAwait(false);
+                LastStill = image;
+                return image;
+            }
+
+            public VideoSource CreateVideoSource(int fps) => inner.CreateVideoSource(fps);
+            public IReadOnlyList<IAudioTrackCapture> CreateAudioTracks(AudioMode mode) => inner.CreateAudioTracks(mode);
         }
 
         private static async Task<int> RecordAsync(AgentArgs args, ICaptureLog log)
