@@ -180,4 +180,5 @@ _Nothing recorded yet._
 | M.CAPT-T144 | 2026-11-02 | fix | closed | Bughunt sweep, two passes: find and fix real bugs across tracked source (user request 2026-11-02) | — |
 | M.CAPT-T145 | 2026-11-02 | fix | closed | Fix the open items the 2026-11-02 bughunt left for decision (tray reload strict load, --clipboard copies saved frame) | — |
 | M.CAPT-T146 | 2026-11-03 | fix | closed | Adopt MindAttic.Vault 8.0.0 TryLoad in the tray settings reload (replaces the M.CAPT-T145 last-good-state fallback) so a failed read is detected explicitly | — |
-| M.CAPT-T147 | 2026-11-10 | chore | open | Crash recovery: commit the generated/live test-result sync (main-tests, main-tests-results/*.trx), command-catalog sync (.agent/commands/*.md) and docs/USER_STORIES.md regen left uncommitted by the session crash | — |
+| M.CAPT-T147 | 2026-11-10 | chore | closed | Crash recovery: commit the generated/live test-result sync (main-tests, main-tests-results/*.trx), command-catalog sync (.agent/commands/*.md) and docs/USER_STORIES.md regen left uncommitted by the session crash | — |
+| M.CAPT-T148 | 2026-11-10 | chore | open | Crash recovery / fleet sync: commit the regenerated docs/USER_STORIES.md left uncommitted after other tickets closed elsewhere | — |
