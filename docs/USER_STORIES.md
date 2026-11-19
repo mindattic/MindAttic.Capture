@@ -183,3 +183,4 @@ _Nothing recorded yet._
 | M.CAPT-T147 | 2026-11-10 | chore | closed | Crash recovery: commit the generated/live test-result sync (main-tests, main-tests-results/*.trx), command-catalog sync (.agent/commands/*.md) and docs/USER_STORIES.md regen left uncommitted by the session crash | — |
 | M.CAPT-T148 | 2026-11-10 | chore | closed | Crash recovery / fleet sync: commit the regenerated docs/USER_STORIES.md left uncommitted after other tickets closed elsewhere | — |
 | M.CAPT-T149 | 2026-11-17 | docs | closed | Update USER_STORIES.md | — |
+| M.CAPT-T150 | 2026-11-18 | chore | closed | Add 2 file(s); Update 1 file(s); Remove 2 file(s) | — |
